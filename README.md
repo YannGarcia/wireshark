@@ -174,6 +174,11 @@ your system.  If you have the libsmi library but _do not_ want to have
 Wireshark use it, you can run configure with the `--without-libsmi`
 option.
 
+ETSI ITS Protocol
+-----------------
+TODO To be completed
+
+
 How to Report a Bug
 -------------------
 
