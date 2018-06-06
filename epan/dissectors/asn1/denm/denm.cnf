@@ -1,0 +1,32 @@
+# denm.cnf
+# DENM conformation file
+
+# $Id$
+
+#.OPT
+PER
+UNALIGNED
+#.END
+
+#.EXPORTS
+
+#.PDU
+DENM
+
+#.FN_BODY TimestampIts
+  offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index, 0U, G_GUINT64_CONSTANT(4398046511103), NULL, FALSE);
+#.END
+
+#.FN_BODY DangerousGoodsExtended/companyName
+  offset=dissect_per_octet_string(tvb, offset, actx, tree, hf_index, NO_BOUND, NO_BOUND, FALSE, NULL);
+#.END
+
+#.NO_EMIT
+
+#.TYPE_RENAME
+
+#.FIELD_RENAME
+
+#.END
+
+

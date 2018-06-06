@@ -29,6 +29,7 @@ set(ASN1_SRC_DIRS
 	credssp
 	crmf
 	dap
+	denm
 	disp
 	dop
 	dsp
@@ -87,6 +88,7 @@ set(ASN1_SRC_DIRS
 	pkixproxy
 	pkixqualified
 	pkixtsp
+	poi
 	pres
 	q932
 	q932-ros

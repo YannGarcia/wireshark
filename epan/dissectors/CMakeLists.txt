@@ -90,6 +90,7 @@ set(CLEAN_ASN1_DISSECTOR_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-credssp.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-crmf.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-dap.c
+	${CMAKE_CURRENT_SOURCE_DIR}/packet-denm.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-disp.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-dop.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-dsp.c
@@ -149,6 +150,7 @@ set(CLEAN_ASN1_DISSECTOR_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-pkixproxy.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-pkixqualified.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-pkixtsp.c
+	${CMAKE_CURRENT_SOURCE_DIR}/packet-poi.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-pres.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-q932.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-q932-ros.c
@@ -282,6 +284,7 @@ set(DISSECTOR_PUBLIC_HEADERS
 	packet-crmf.h
 	packet-csn1.h
 	packet-dap.h
+	packet-denm.h
 	packet-dcc.h
 	packet-dccp.h
 	packet-dcerpc.h
@@ -469,6 +472,7 @@ set(DISSECTOR_PUBLIC_HEADERS
 	packet-pkixproxy.h
 	packet-pkixqualified.h
 	packet-pkixtsp.h
+	packet-poi.h
 	packet-pkinit.h
 	packet-pktc.h
 	packet-portmap.h
