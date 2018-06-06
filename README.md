@@ -174,6 +174,17 @@ your system.  If you have the libsmi library but _do not_ want to have
 Wireshark use it, you can run configure with the `--without-libsmi`
 option.
 
+TS protocol support
+--------------------
+This version of Wireshark includes support of ETSI ITS procolols listed below:
+- ETSI EN 302 637-2: "Intelligent Transport Systems (ITS); Vehicular Communications; Basic Set of Applications; Part 2: Specification of Cooperative Awareness Basic Service"
+- ETSI EN 102 637-3: "Intelligent Transport Systems (ITS); Vehicular Communications; Basic Set of Applications; Part 3: Specifications of Decentralized Environmental Notification Basic Service" 
+- ETSI TS 103 301: "Intelligent Transport Systems (ITS); Vehicular Communications; Basic Set of Applications; Facilities layer protocols and communication requirements for infrastructure services"
+- EN 302 636-5-1: "Intelligent Transport Systems (ITS); Vehicular Communications; GeoNetworking; Part 5: Transport Protocols; Sub-part 1: Basic Transport Protocol"
+- EN 302 636-4-1: "Intelligent Transport Systems (ITS); Vehicular Communications; GeoNetworking; Part 4: Geographical addressing and forwarding for point-to-point and point-to-multipoint communications; Sub-part 1: Media-Independent Functionality"
+
+In addition, it also support ITS Security as define by the Trust and Privacy Management technical specification ETSI TS 102 941 and IEEE 1609.2.
+
 How to Report a Bug
 -------------------
 
