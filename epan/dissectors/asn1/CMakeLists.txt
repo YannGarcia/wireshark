@@ -19,6 +19,7 @@ set(ASN1_SRC_DIRS
 	atn-cpdlc
 	atn-ulcs
 	c1222
+	cam
 	camel
 	cdt
 	charging_ase

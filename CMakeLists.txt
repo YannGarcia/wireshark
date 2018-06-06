@@ -484,6 +484,8 @@ else() # ! MSVC
 		-Wno-overlength-strings
 		-Wno-long-long
 		-Wheader-guard
+		-Wno-unused-const-variable
+		-Wno-unused-function
 	)
 
 	#
@@ -1334,6 +1336,10 @@ if(ENABLE_PLUGINS)
 		plugins/epan/wimax
 		plugins/epan/wimaxasncp
 		plugins/epan/wimaxmacphy
+		plugins/epan/btp
+		plugins/epan/gn
+		plugins/epan/c2p
+		plugins/epan/itsut
 		plugins/wiretap/usbdump
 		plugins/codecs/l16_mono
 		${CUSTOM_PLUGIN_SRC_DIR}

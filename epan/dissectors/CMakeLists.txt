@@ -80,6 +80,7 @@ set(CLEAN_ASN1_DISSECTOR_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-atn-cm.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-atn-cpdlc.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-c1222.c
+	${CMAKE_CURRENT_SOURCE_DIR}/packet-cam.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-camel.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-cdt.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-charging_ase.c
@@ -264,6 +265,7 @@ set(DISSECTOR_PUBLIC_HEADERS
 	packet-btrfcomm.h
 	packet-btsdp.h
 	packet-c1222.h
+	packet-cam.h
 	packet-camel.h
 	packet-cdt.h
 	packet-cell_broadcast.h
