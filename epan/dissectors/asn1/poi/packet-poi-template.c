@@ -21,11 +21,10 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-#ifdef HAVE_CONFIG_H
 # include "config.h"
-#endif
 
 #include <glib.h>
+
 #include <epan/packet.h>
 #include <epan/asn1.h>
 #include <epan/dissectors/packet-per.h>
@@ -56,16 +55,10 @@ static int ett_poi = -1;
 
 #include "packet-poi-fn.c"
 
-//extern guint32 dissect_per_UTF8String(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index, int min_len, int max_len, gboolean has_extension);
-guint32
-dissect_per_UTF8String(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index, int min_len, int max_len, gboolean has_extension)
-{
-  offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index, min_len, max_len, has_extension, NULL);
-  return offset;
-}
+extern guint32 dissect_per_UTF8String(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index, int min_len, int max_len, gboolean has_extension);
 
-static void
-dissect_poi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_poi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item      *poi_item = NULL;
     proto_tree      *poi_tree = NULL;
@@ -80,8 +73,10 @@ dissect_poi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if (tree) {
         poi_item = proto_tree_add_item(tree, proto_poi, tvb, 0, -1, FALSE);
         poi_tree = proto_item_add_subtree(poi_item, ett_poi);
-        dissect_poi(tvb, pinfo, poi_tree, NULL);
+        dissect_EvcsnPdu_PDU(tvb, pinfo, poi_tree, NULL);
     }
+
+    return tvb_captured_length(tvb);
 }
 /*--- proto_register_poi -------------------------------------------*/
 void proto_register_poi(void) {

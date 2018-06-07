@@ -29,11 +29,10 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-#ifdef HAVE_CONFIG_H
 # include "config.h"
-#endif
 
 #include <glib.h>
+
 #include <epan/packet.h>
 #include <epan/asn1.h>
 #include <epan/dissectors/packet-per.h>
@@ -58,6 +57,7 @@ static int global_poi_port = POI_PORT;
 
 /*--- Included file: packet-poi-hf.c ---*/
 #line 1 "./asn1/poi/packet-poi-hf.c"
+static int hf_poi_EvcsnPdu_PDU = -1;              /* EvcsnPdu */
 static int hf_poi_protocolVersion = -1;           /* T_protocolVersion */
 static int hf_poi_messageID = -1;                 /* T_messageID */
 static int hf_poi_stationID = -1;                 /* StationID */
@@ -221,7 +221,7 @@ static int hf_poi_ChargingSpotType_inductiveChargeWhileStationary = -1;
 static int hf_poi_ChargingSpotType_inductiveChargeWhileDriving = -1;
 
 /*--- End of included file: packet-poi-hf.c ---*/
-#line 51 "./asn1/poi/packet-poi-template.c"
+#line 50 "./asn1/poi/packet-poi-template.c"
 
 /* Initialize the subtree pointers */
 static int ett_poi = -1;
@@ -281,7 +281,7 @@ static gint ett_poi_ParkingPlacesData = -1;
 static gint ett_poi_SpotAvailability = -1;
 
 /*--- End of included file: packet-poi-ett.c ---*/
-#line 56 "./asn1/poi/packet-poi-template.c"
+#line 55 "./asn1/poi/packet-poi-template.c"
 
 
 /*--- Included file: packet-poi-fn.c ---*/
@@ -2860,20 +2860,25 @@ dissect_poi_EvcsnPdu(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
   return offset;
 }
 
+/*--- PDUs ---*/
 
-/*--- End of included file: packet-poi-fn.c ---*/
-#line 58 "./asn1/poi/packet-poi-template.c"
-
-//extern guint32 dissect_per_UTF8String(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index, int min_len, int max_len, gboolean has_extension);
-guint32
-dissect_per_UTF8String(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index, int min_len, int max_len, gboolean has_extension)
-{
-  offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index, min_len, max_len, has_extension, NULL);
+static int dissect_EvcsnPdu_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
+  asn1_ctx_t asn1_ctx;
+  asn1_ctx_init(&asn1_ctx, ASN1_ENC_PER, FALSE, pinfo);
+  offset = dissect_poi_EvcsnPdu(tvb, offset, &asn1_ctx, tree, hf_poi_EvcsnPdu_PDU);
+  offset += 7; offset >>= 3;
   return offset;
 }
 
-static void
-dissect_poi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+
+/*--- End of included file: packet-poi-fn.c ---*/
+#line 57 "./asn1/poi/packet-poi-template.c"
+
+extern guint32 dissect_per_UTF8String(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index, int min_len, int max_len, gboolean has_extension);
+
+static int
+dissect_poi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item      *poi_item = NULL;
     proto_tree      *poi_tree = NULL;
@@ -2888,8 +2893,10 @@ dissect_poi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if (tree) {
         poi_item = proto_tree_add_item(tree, proto_poi, tvb, 0, -1, FALSE);
         poi_tree = proto_item_add_subtree(poi_item, ett_poi);
-        dissect_poi(tvb, pinfo, poi_tree, NULL);
+        dissect_EvcsnPdu_PDU(tvb, pinfo, poi_tree, NULL);
     }
+
+    return tvb_captured_length(tvb);
 }
 /*--- proto_register_poi -------------------------------------------*/
 void proto_register_poi(void) {
@@ -2902,6 +2909,10 @@ void proto_register_poi(void) {
 
 /*--- Included file: packet-poi-hfarr.c ---*/
 #line 1 "./asn1/poi/packet-poi-hfarr.c"
+    { &hf_poi_EvcsnPdu_PDU,
+      { "EvcsnPdu", "poi.EvcsnPdu_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
     { &hf_poi_protocolVersion,
       { "protocolVersion", "poi.protocolVersion",
         FT_UINT32, BASE_DEC, VALS(poi_T_protocolVersion_vals), 0,
@@ -3544,7 +3555,7 @@ void proto_register_poi(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-poi-hfarr.c ---*/
-#line 95 "./asn1/poi/packet-poi-template.c"
+#line 90 "./asn1/poi/packet-poi-template.c"
   };
 
   /* List of subtrees */
@@ -3605,7 +3616,7 @@ void proto_register_poi(void) {
     &ett_poi_SpotAvailability,
 
 /*--- End of included file: packet-poi-ettarr.c ---*/
-#line 101 "./asn1/poi/packet-poi-template.c"
+#line 96 "./asn1/poi/packet-poi-template.c"
   };
 
 
