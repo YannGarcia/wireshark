@@ -80,6 +80,7 @@ dissect_btp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
   col_add_str(pinfo->cinfo, COL_INFO, str_btp_type);
 
   btp_dport = tvb_get_ntohs(tvb, 0);
+  printf("BTP Codec: btp_dport = %d\n", btp_dport);
  
   if (tree) { /* we are being asked for details */
     proto_item *ti = NULL;
