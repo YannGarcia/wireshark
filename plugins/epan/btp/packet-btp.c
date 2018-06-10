@@ -99,7 +99,7 @@ dissect_btp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
     }
   }
 
-  next_tvb = tvb_new_subset_length(tvb, 4, -1);
+  next_tvb = tvb_new_subset_remaining(tvb, 4);
   btp_port_dissector_table = find_dissector_table("btp.dport");
   printf("=======> BTP: Before dissector_try_uint\n");
   if(dissector_try_uint(btp_port_dissector_table, btp_dport, next_tvb, pinfo, tree))
