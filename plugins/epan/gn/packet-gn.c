@@ -2162,34 +2162,34 @@ dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_t
 static int
 dissect_ieee1609dot2_unsecured_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
 {
-  //proto_tree *sh_tree = NULL;
-  //proto_item *sh_ti = NULL;
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
 
-  printf(">>> dissect_ieee1609dot2_unsecured_data_packet: offset=%d\n", offset);
-  printf("dissect_ieee1609dot2_unsecured_data_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(tvb, offset), tvb_get_guint8(tvb, offset + 1), tvb_get_guint8(tvb, offset + 2), tvb_get_guint8(tvb, offset + 3), tvb_get_guint8(tvb, offset + 4));
+  //printf(">>> dissect_ieee1609dot2_unsecured_data_packet: offset=%d\n", offset);
+  //printf("dissect_ieee1609dot2_unsecured_data_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(tvb, offset), tvb_get_guint8(tvb, offset + 1), tvb_get_guint8(tvb, offset + 2), tvb_get_guint8(tvb, offset + 3), tvb_get_guint8(tvb, offset + 4));
   if (tree) { /* we are being asked for details */
     guint8 tag;
     gint len;
     tvbuff_t *next_tvb;
     
-    /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    //    sh_ti = proto_tree_add_item(tree, hf_1609dot2_unsecured_data, tvb, offset, len, FALSE);
-    //    sh_tree = proto_item_add_subtree(sh_ti, ett_unsecured_content);
-    
     /* Sequence Tag */
     tag = tvb_get_guint8(tvb, offset);
-    printf("dissect_ieee1609dot2_unsecured_data_packet: tag: '%x'\n", tag);
+    //printf("dissect_ieee1609dot2_unsecured_data_packet: tag: '%x'\n", tag);
     offset += 1;
     // Ignore tag, SignedDataPayload.extDataHash shall not be used!!!
     
     len = tvb_get_guint8(tvb, offset);
     offset += 1;
-    printf("dissect_ieee1609dot2_unsecured_data_packet: len = %d - offset = %d\n", len, offset);
+    //printf("dissect_ieee1609dot2_unsecured_data_packet: len = %d - offset = %d\n", len, offset);
+    /* Sec Header tree - See IEEE Std 1609.2a-2017 */
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_unsecured_data, tvb, offset, len, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_unsecured_content);
+    
 
     /* Dissect GN Packet */
     next_tvb = tvb_new_subset_length(tvb, offset, len);
-    printf("dissect_ieee1609dot2_unsecured_data_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(next_tvb, 0), tvb_get_guint8(next_tvb, 1), tvb_get_guint8(next_tvb, 2), tvb_get_guint8(next_tvb, 3), tvb_get_guint8(next_tvb, 4));
-    //dissect_unsecured_packet(next_tvb, pinfo, sh_tree, 0);
+    //printf("dissect_ieee1609dot2_unsecured_data_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(next_tvb, 0), tvb_get_guint8(next_tvb, 1), tvb_get_guint8(next_tvb, 2), tvb_get_guint8(next_tvb, 3), tvb_get_guint8(next_tvb, 4));
+    dissect_unsecured_packet(next_tvb, pinfo, sh_tree, 0);
     offset += len;
   }
   

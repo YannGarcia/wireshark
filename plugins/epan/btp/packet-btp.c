@@ -80,7 +80,6 @@ dissect_btp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
   col_add_str(pinfo->cinfo, COL_INFO, str_btp_type);
 
   btp_dport = tvb_get_ntohs(tvb, 0);
-  printf("BTP Codec: btp_dport = %d\n", btp_dport);
  
   if (tree) { /* we are being asked for details */
     proto_item *ti = NULL;
@@ -102,13 +101,11 @@ dissect_btp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 
   next_tvb = tvb_new_subset_remaining(tvb, 4);
   btp_port_dissector_table = find_dissector_table("btp.dport");
-  printf("=======> BTP: Before dissector_try_uint\n");
   if(dissector_try_uint(btp_port_dissector_table, btp_dport, next_tvb, pinfo, tree))
     return 4;
 
   /* Get a handle for the generic data dissector. */
   data_handle = find_dissector("data");
-  printf("=======> BTP: Before call_dissector\n");
   call_dissector(data_handle, next_tvb, pinfo, tree);
   
   return 4;
