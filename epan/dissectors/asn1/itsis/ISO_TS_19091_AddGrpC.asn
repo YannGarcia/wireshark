@@ -1,0 +1,105 @@
+-- ^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-
+-- 
+-- module: AddGrpC
+-- ISO TS 19091 Oct 2015 v0910
+-- 
+-- ^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-
+AddGrpC { 	iso (1) standard (0) signalizedIntersection (19091) profilec(2) addgrpc (0) version (1) }
+
+
+DEFINITIONS AUTOMATIC TAGS::= BEGIN 
+
+IMPORTS
+NodeOffsetPointXY, NodeSetXY, PrioritizationResponseStatus, SignalGroupID, DeltaTime, LaneID FROM DSRC
+Altitude, StationID, DeltaAltitude FROM ITS-Container { itu-t (0) identified-organization (4) etsi (0) itsDomain (5) wg1 (1) ts (102894) cdd (2) version (1) };
+
+
+ConnectionManeuverAssist-addGrpC ::=  SEQUENCE {
+	vehicleToLanePositions		VehicleToLanePositionList	OPTIONAL,
+	rsuGNSSOffset				NodeOffsetPointXY	OPTIONAL
+}
+
+ConnectionTrajectory-addGrpC	::= SEQUENCE {
+	nodes				NodeSetXY,
+	...
+}
+
+Control-addGrpC ::=  SEQUENCE {
+	ptvRequest			PtvRequestType,
+	...
+}
+
+IntersectionState-addGrpC ::=  SEQUENCE { 
+	activePrioritizations		PrioritizationResponseList	OPTIONAL,
+	...
+}
+
+MapData-addGrpC ::=  SEQUENCE { 
+	signalHeadLocations		SignalHeadLocationList	OPTIONAL,
+	...
+}
+
+Position3D-addGrpC ::=  SEQUENCE {
+	altitude			Altitude, 
+	...
+}
+
+PrioritizationResponseList ::=  SEQUENCE SIZE(1..10) OF PrioritizationResponse
+
+PrioritizationResponse ::=  SEQUENCE {
+	stationed			StationID,
+	priorState			PrioritizationResponseStatus,
+	 signalGroup		SignalGroupID,
+	...
+}
+
+RestrictionUserType-addGrpC ::=  SEQUENCE {
+	emission			EmissionType OPTIONAL,
+	...
+}
+
+SignalHeadLocationList ::=  SEQUENCE (SIZE(1..64)) OF  SignalHeadLocation
+
+SignalHeadLocation ::=  SEQUENCE {
+	nodeXY			NodeOffsetPointXY,
+	nodeZ				DeltaAltitude,
+	signalGroupID	SignalGroupID,
+	...   
+}
+
+SignalStatusPackage-addGrpC ::= SEQUENCE {
+	synchToSchedule	DeltaTime OPTIONAL,
+	...
+}
+
+
+VehicleToLanePositionList ::=  SEQUENCE SIZE(1..5) OF VehicleToLanePosition
+
+VehicleToLanePosition ::=  SEQUENCE {
+	stationID			StationID, 
+	laneID				LaneID,
+	timeReference	TimeReference	OPTIONAL,
+	...
+}
+EmissionType ::= ENUMERATED {
+	euro1,
+	euro2,
+	euro3,
+	euro4,
+	euro5,
+	euro6,
+	...
+}
+
+PtvRequestType	::= ENUMERATED {
+	preRequest,
+	mainRequest,
+	doorCloseRequest,
+	cancelRequest,
+	emergencyRequest,
+	...
+}
+
+TimeReference ::= INTEGER { oneMilliSec(1) } (0..65535)
+
+END

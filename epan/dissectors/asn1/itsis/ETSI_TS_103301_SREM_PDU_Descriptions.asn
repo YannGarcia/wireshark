@@ -1,0 +1,23 @@
+-- ^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-
+-- 
+-- module: SRM-MESSAGE-PDU-Descriptions
+-- 
+-- ^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-
+SREM-PDU-Descriptions {
+	itu-t (0) identified-organization (4) etsi (0) itsDomain (5) wg1 (1) en (103301) srem (3) version1 (1)
+}
+
+DEFINITIONS AUTOMATIC TAGS ::= 
+
+BEGIN
+
+IMPORTS
+SignalRequestMessage FROM DSRC { iso (1) standard (0) signalizedIntersection (19091) profilec(2) dsrc (2) version (1) } 
+ItsPduHeader FROM ITS-Container { itu-t (0) identified-organization (4) etsi (0) itsDomain (5) wg1 (1) ts (102894) cdd (2) version (1) };
+
+SREM ::= SEQUENCE {
+	header	ItsPduHeader,
+	srm	SignalRequestMessage
+}
+
+END

@@ -2231,9 +2231,8 @@ dissect_denm_SteeringWheelAngle(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 
 static int
 dissect_denm_TimestampIts(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 17 "./asn1/denm/denm.cnf"
-  offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index, 0U, G_GUINT64_CONSTANT(4398046511103), NULL, FALSE);
-
+  offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
+                                     42, 42, FALSE, NULL, NULL);
 
   return offset;
 }
