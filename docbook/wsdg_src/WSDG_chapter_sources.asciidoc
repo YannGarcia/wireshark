@@ -413,7 +413,7 @@ After the build process has successfully finished, you should find a
 
 
 [TIP]
-.Tip!
+.Beware of multiple Wiresharks
 ====
 An already installed Wireshark may interfere with your newly generated
 version in various ways. If you have any problems getting your Wireshark
@@ -466,7 +466,7 @@ launching the Wireshark.exe executable.
 
 ==== Unix/Linux
 
-You can debug using command-line debuggers such as gdb, dbx, or lldb. 
+You can debug using command-line debuggers such as gdb, dbx, or lldb.
 If you prefer a graphic debugger, you can use the Data Display Debugger
 (ddd).
 
@@ -478,7 +478,7 @@ Additional traps can be set on GLib by setting the `G_DEBUG` environment variabl
 $ G_DEBUG=fatal_criticals ddd wireshark
 ----
 
-See http://library.gnome.org/devel/glib/stable/glib-running.html[]
+See https://developer.gnome.org/glib/stable/glib-running.html[]
 
 [[ChSrcWin32Debug]]
 
@@ -816,6 +816,12 @@ change, you can run git commit --no-verify to skip running the hooks. Warning: u
 --no-verify avoids the commit-msg hook, and thus will not automatically add the required
 Change-ID to your commit. In case you are not updating an existing patch you may generate
 a Change-ID by running git review -i (or git commit --amend if don't use git review).
++
+Additionally, if your system supports symbolic links (like Linux), you can use them
+instead of copying files. Running ln -s ./tools/pre-commit .git/hooks creates a symbolic
+link that will make the hook to be up-to-date with the current master. The same can
+be done for commit-msg script.
+
 
 * _Fuzz test your changes!_ Fuzz testing is a very
 effective way to automatically find a lot of dissector related bugs.

@@ -95,6 +95,9 @@ static int hf_auth_algorithm = -1;
 static int hf_auth_rdm = -1;
 static int hf_auth_replay_detection = -1;
 static int hf_auth_info = -1;
+static int hf_auth_realm = -1;
+static int hf_auth_key_id = -1;
+static int hf_auth_md5_data = -1;
 static int hf_opt_unicast = -1;
 static int hf_opt_status_code = -1;
 static int hf_opt_status_msg = -1;
@@ -1193,8 +1196,6 @@ dissect_cablelabs_specific_opts(proto_tree *v_tree, proto_item *v_item, packet_i
                 /* ToDo: review latest CL docs for updates */
                 opt_len = tlv_len;
 
-                if (device_type == NULL)
-                    break;
 
                 tlv5_counter = 0;
                 tlv5_cap_index = sub_off;
@@ -1202,8 +1203,8 @@ dissect_cablelabs_specific_opts(proto_tree *v_tree, proto_item *v_item, packet_i
                 subtree = proto_item_add_subtree(ti, ett_dhcpv6_tlv5_type);
 
                 while (tlv5_counter < tlv_len) {
-
-                    if (!g_ascii_strncasecmp(device_type, "ecm", 3)) {
+                    /*Device type is not mandatory for CM (see par 10.2.5.2.3 "Obtain IPv6 Management Address and Other Configuration Parameters" in  CM-SP-MULPIv3.1-114-180130*/
+                    if (device_type == NULL || !g_ascii_strncasecmp(device_type, "ecm", 3)) {
                         ti2 = proto_tree_add_item(subtree, hf_modem_capabilities_encoding_type, tvb, tlv5_cap_index, 1, ENC_BIG_ENDIAN);
                     } else if (!g_ascii_strncasecmp(device_type, "edva", 3)) {
                         ti2 = proto_tree_add_item(subtree, hf_eue_capabilities_encoding_type, tvb, tlv5_cap_index, 1, ENC_BIG_ENDIAN);
@@ -1369,6 +1370,7 @@ dhcpv6_option(tvbuff_t *tvb, packet_info *pinfo, proto_tree *bp_tree,
     int         i;
     guint16     duidtype;
     guint32     enterprise_no;
+    guint      algorithm;
 
     /* option type and length must be present */
     if ((eoff - off) < 4) {
@@ -1778,11 +1780,20 @@ dhcpv6_option(tvbuff_t *tvb, packet_info *pinfo, proto_tree *bp_tree,
         }
 
         proto_tree_add_item(subtree, hf_auth_protocol, tvb, off, 1, ENC_BIG_ENDIAN);
-        proto_tree_add_item(subtree, hf_auth_algorithm, tvb, off+1, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item_ret_uint(subtree, hf_auth_algorithm, tvb, off+1, 1, ENC_BIG_ENDIAN, &algorithm);
         proto_tree_add_item(subtree, hf_auth_rdm, tvb, off+2, 1, ENC_BIG_ENDIAN);
         proto_tree_add_item(subtree, hf_auth_replay_detection, tvb, off+3, 8, ENC_NA);
-        if (optlen != 11)
+        if (optlen > 11+20 && algorithm == 1) {  // RFC 3315, HMAC-MD5 (16) + Key ID (4) => 20 bytes
+            if (optlen-11-20 < 256) {
+                proto_tree_add_item(subtree, hf_auth_realm, tvb, off+11, optlen-11-20, ENC_ASCII|ENC_NA);
+            } else {
+                expert_add_info_format(pinfo, option_item, &ei_dhcpv6_malformed_option, "DHCP realm: probably malformed option");
+            }
+            proto_tree_add_item(subtree, hf_auth_key_id, tvb, off+optlen-16-4, 4, ENC_BIG_ENDIAN);
+            proto_tree_add_item(subtree, hf_auth_md5_data, tvb, off+optlen-16, 16, ENC_NA);
+        } else {
             proto_tree_add_item(subtree, hf_auth_info, tvb, off+11, optlen-11, ENC_NA);
+        }
         break;
     case OPTION_UNICAST:
         if (optlen != 16) {
@@ -2417,6 +2428,12 @@ proto_register_dhcpv6(void)
           { "Replay Detection", "dhcpv6.auth.replay_detection", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}},
         { &hf_auth_info,
           { "Authentication Information", "dhcpv6.auth.info", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}},
+        { &hf_auth_realm,
+          { "DHCP realm", "dhcpv6.auth.realm", FT_STRING, BASE_NONE, NULL, 0, NULL, HFILL }},
+        { &hf_auth_key_id,
+          {"Key ID", "dhcpv6.auth.key_id", FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL}},
+        { &hf_auth_md5_data,
+          {"HMAC-MD5 data", "dhcpv6.auth.md5_data", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}},
         { &hf_opt_unicast,
           { "IPv6 address", "dhcpv6.unicast", FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL}},
         { &hf_opt_status_code,

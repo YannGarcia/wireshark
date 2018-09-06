@@ -98,6 +98,7 @@ static void write_specified_fields(fields_format format,
 static void print_escaped_xml(FILE *fh, const char *unescaped_string);
 static void print_escaped_json(FILE *fh, const char *unescaped_string);
 static void print_escaped_ek(FILE *fh, const char *unescaped_string);
+static void print_escaped_csv(FILE *fh, const char *unescaped_string);
 
 typedef void (*proto_node_value_writer)(proto_node *, write_json_data *);
 static void write_json_proto_node_list(GSList *proto_node_list_head, write_json_data *data);
@@ -574,6 +575,7 @@ proto_tree_write_node_pdml(proto_node *node, gpointer data)
                         case FT_INT32:
                             fprintf(pdata->fh, "%X", (guint) fvalue_get_sinteger(&fi->value));
                             break;
+                        case FT_CHAR:
                         case FT_UINT8:
                         case FT_UINT16:
                         case FT_UINT24:
@@ -959,6 +961,7 @@ write_json_proto_node_hex_dump(proto_node *node, write_json_data *data)
             case FT_INT32:
                 fprintf(data->fh, "%X", (guint) fvalue_get_sinteger(&fi->value));
                 break;
+            case FT_CHAR:
             case FT_UINT8:
             case FT_UINT16:
             case FT_UINT24:
@@ -1269,6 +1272,7 @@ ek_write_hex(field_info *fi, write_json_data *pdata)
             case FT_INT32:
                 fprintf(pdata->fh, "%X", (guint) fvalue_get_sinteger(&fi->value));
                 break;
+            case FT_CHAR:
             case FT_UINT8:
             case FT_UINT16:
             case FT_UINT24:
@@ -1858,6 +1862,39 @@ print_escaped_bare(FILE *fh, const char *unescaped_string, gboolean change_dot)
         }
     }
 }
+
+static void
+print_escaped_csv(FILE *fh, const char *unescaped_string)
+{
+    const char *p;
+
+    if (fh == NULL || unescaped_string == NULL) {
+        return;
+    }
+
+    for (p = unescaped_string; *p != '\0'; p++) {
+        switch (*p) {
+        case '\b':
+            fputs("\\b", fh);
+            break;
+        case '\f':
+            fputs("\\f", fh);
+            break;
+        case '\n':
+            fputs("\\n", fh);
+            break;
+        case '\r':
+            fputs("\\r", fh);
+            break;
+        case '\t':
+            fputs("\\t", fh);
+            break;
+        default:
+            fputc(*p, fh);
+        }
+    }
+}
+
 
 /* Print a string, escaping out certain characters that need to
  * escaped out for JSON. */
@@ -2486,7 +2523,7 @@ static void write_specified_fields(fields_format format, output_fields_t *fields
                 /* Output the array of (partial) field values */
                 for (j = 0; j < g_ptr_array_len(fv_p); j++ ) {
                     str = (gchar *)g_ptr_array_index(fv_p, j);
-                    fputs(str, fh);
+                    print_escaped_csv(fh, str);
                     g_free(str);
                 }
                 if (fields->quote != '\0') {

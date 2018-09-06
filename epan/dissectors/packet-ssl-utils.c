@@ -61,7 +61,6 @@
 
 /* Lookup tables {{{ */
 const value_string ssl_version_short_names[] = {
-    { SSL_VER_UNKNOWN,      "SSL" },
     { SSLV2_VERSION,        "SSLv2" },
     { SSLV3_VERSION,        "SSLv3" },
     { TLSV1_VERSION,        "TLSv1" },
@@ -463,8 +462,8 @@ const value_string ssl_extension_curves[] = {
     { 26, "brainpoolP256r1" }, /* RFC 7027 */
     { 27, "brainpoolP384r1" }, /* RFC 7027 */
     { 28, "brainpoolP512r1" }, /* RFC 7027 */
-    { 29, "x25519" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13 https://tools.ietf.org/html/draft-ietf-tls-rfc4492bis */
-    { 30, "x448" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13 https://tools.ietf.org/html/draft-ietf-tls-rfc4492bis */
+    { 29, "x25519" }, /* RFC 8446 / RFC 8422 */
+    { 30, "x448" }, /* RFC 8446 / RFC 8422 */
     { 256, "ffdhe2048" }, /* RFC 7919 */
     { 257, "ffdhe3072" }, /* RFC 7919 */
     { 258, "ffdhe4096" }, /* RFC 7919 */
@@ -845,7 +844,7 @@ static const value_string ssl_31_ciphersuite[] = {
     { 0x00FF, "TLS_EMPTY_RENEGOTIATION_INFO_SCSV" },
     /* https://tools.ietf.org/html/draft-ietf-tls-grease */
     { 0x0A0A, "Reserved (GREASE)" },
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13 */
+    /* RFC 8446 */
     { 0x1301, "TLS_AES_128_GCM_SHA256" },
     { 0x1302, "TLS_AES_256_GCM_SHA384" },
     { 0x1303, "TLS_CHACHA20_POLY1305_SHA256" },
@@ -1049,6 +1048,8 @@ static const value_string ssl_31_ciphersuite[] = {
     { 0xC0AD, "TLS_ECDHE_ECDSA_WITH_AES_256_CCM" },
     { 0xC0AE, "TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8" },
     { 0xC0AF, "TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8" },
+    /* https://www.ietf.org/archive/id/draft-cragie-tls-ecjpake-01.txt */
+    { 0xC0FF, "TLS_ECJPAKE_WITH_AES_128_CCM_8" },
     /* https://tools.ietf.org/html/draft-ietf-tls-grease */
     { 0xCACA, "Reserved (GREASE)" },
 /*
@@ -1205,19 +1206,19 @@ const value_string tls_hello_extension_types[] = {
     { SSL_HND_HELLO_EXT_TOKEN_BINDING, "token_binding" }, /* https://tools.ietf.org/html/draft-ietf-tokbind-negotiation */
     { SSL_HND_HELLO_EXT_CACHED_INFO, "cached_info" }, /* RFC 7924 */
     { SSL_HND_HELLO_EXT_QUIC_TRANSPORT_PARAMETERS, "quic_transports_parameters" }, /* https://tools.ietf.org/html/draft-ietf-quic-tls */
-    { SSL_HND_HELLO_EXT_SESSION_TICKET_TLS, "SessionTicket TLS" }, /* RFC 4507 */
-    { SSL_HND_HELLO_EXT_KEY_SHARE_OLD, "Reserved (key_share)" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13-22 */
-    { SSL_HND_HELLO_EXT_PRE_SHARED_KEY, "pre_shared_key" }, /* TLS 1.3 https://tools.ietf.org/html/draft-ietf-tls-tls13 */
-    { SSL_HND_HELLO_EXT_EARLY_DATA, "early_data" }, /* TLS 1.3 https://tools.ietf.org/html/draft-ietf-tls-tls13 */
-    { SSL_HND_HELLO_EXT_SUPPORTED_VERSIONS, "supported_versions" }, /* TLS 1.3 https://tools.ietf.org/html/draft-ietf-tls-tls13 */
-    { SSL_HND_HELLO_EXT_COOKIE, "cookie" }, /* TLS 1.3 https://tools.ietf.org/html/draft-ietf-tls-tls13 */
-    { SSL_HND_HELLO_EXT_PSK_KEY_EXCHANGE_MODES, "psk_key_exchange_modes" }, /* TLS 1.3 https://tools.ietf.org/html/draft-ietf-tls-tls13 */
-    { SSL_HND_HELLO_EXT_TICKET_EARLY_DATA_INFO, "ticket_early_data_info" }, /* draft-ietf-tls-tls13-18 (removed in -19) */
-    { SSL_HND_HELLO_EXT_CERTIFICATE_AUTHORITIES, "certificate_authorities" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.2.3.1 */
-    { SSL_HND_HELLO_EXT_OID_FILTERS, "oid_filters" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.3.2.1 */
-    { SSL_HND_HELLO_EXT_POST_HANDSHAKE_AUTH, "post_handshake_auth" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13-20#section-4.2.5 */
-    { SSL_HND_HELLO_EXT_SIGNATURE_ALGORITHMS_CERT, "signature_algorithms_cert" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13-23 */
-    { SSL_HND_HELLO_EXT_KEY_SHARE, "key_share" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13-23 */
+    { SSL_HND_HELLO_EXT_SESSION_TICKET_TLS, "session_ticket" }, /* RFC 5077 / RFC 8447 */
+    { SSL_HND_HELLO_EXT_KEY_SHARE_OLD, "Reserved (key_share)" }, /* https://tools.ietf.org/html/draft-ietf-tls-tls13-22 (removed in -23) */
+    { SSL_HND_HELLO_EXT_PRE_SHARED_KEY, "pre_shared_key" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_EARLY_DATA, "early_data" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_SUPPORTED_VERSIONS, "supported_versions" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_COOKIE, "cookie" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_PSK_KEY_EXCHANGE_MODES, "psk_key_exchange_modes" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_TICKET_EARLY_DATA_INFO, "Reserved (ticket_early_data_info)" }, /* draft-ietf-tls-tls13-18 (removed in -19) */
+    { SSL_HND_HELLO_EXT_CERTIFICATE_AUTHORITIES, "certificate_authorities" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_OID_FILTERS, "oid_filters" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_POST_HANDSHAKE_AUTH, "post_handshake_auth" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_SIGNATURE_ALGORITHMS_CERT, "signature_algorithms_cert" }, /* RFC 8446 */
+    { SSL_HND_HELLO_EXT_KEY_SHARE, "key_share" }, /* RFC 8446 */
     { SSL_HND_HELLO_EXT_GREASE_0A0A, "Reserved (GREASE)" }, /* https://tools.ietf.org/html/draft-ietf-tls-grease */
     { SSL_HND_HELLO_EXT_GREASE_1A1A, "Reserved (GREASE)" }, /* https://tools.ietf.org/html/draft-ietf-tls-grease */
     { SSL_HND_HELLO_EXT_GREASE_2A2A, "Reserved (GREASE)" }, /* https://tools.ietf.org/html/draft-ietf-tls-grease */
@@ -1240,7 +1241,6 @@ const value_string tls_hello_extension_types[] = {
     { SSL_HND_HELLO_EXT_GREASE_DADA, "Reserved (GREASE)" }, /* https://tools.ietf.org/html/draft-ietf-tls-grease */
     { SSL_HND_HELLO_EXT_GREASE_EAEA, "Reserved (GREASE)" }, /* https://tools.ietf.org/html/draft-ietf-tls-grease */
     { SSL_HND_HELLO_EXT_GREASE_FAFA, "Reserved (GREASE)" }, /* https://tools.ietf.org/html/draft-ietf-tls-grease */
-    { SSL_HND_HELLO_EXT_DRAFT_VERSION_TLS13, "Draft version of TLS 1.3" }, /* for experimentation only  https://www.ietf.org/mail-archive/web/tls/current/msg20853.html */
     { 0, NULL }
 };
 
@@ -1249,7 +1249,7 @@ const value_string tls_hello_ext_server_name_type_vs[] = {
     { 0, NULL }
 };
 
-/* draft-ietf-tls-tls13-19 4.2.6 */
+/* RFC 8446 Section 4.2.9 */
 const value_string tls_hello_ext_psk_ke_mode[] = {
     { 0, "PSK-only key establishment (psk_ke)" },
     { 1, "PSK with (EC)DHE key establishment (psk_dhe_ke)" },
@@ -1282,7 +1282,7 @@ const value_string tls_signature_algorithm[] = {
     { 0, NULL }
 };
 
-/* https://tools.ietf.org/html/draft-ietf-tls-tls13-23#section-4.2.3 */
+/* RFC 8446 Section 4.2.3 */
 const value_string tls13_signature_algorithm[] = {
     { 0x0201, "rsa_pkcs1_sha1" },
     { 0x0203, "ecdsa_sha1" },
@@ -1774,6 +1774,8 @@ gint ssl_get_keyex_alg(gint cipher)
     case 0xc01e:
     case 0xc021:
         return KEX_SRP_SHA_RSA;
+    case 0xc0ff:
+        return KEX_ECJPAKE;
     default:
         break;
     }
@@ -2287,6 +2289,7 @@ static const SslCipherSuite cipher_suites[]={
     {0xC00D,KEX_ECDH_RSA,       ENC_3DES,       DIG_SHA,    MODE_CBC   },   /* TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA */
     {0xC00E,KEX_ECDH_RSA,       ENC_AES,        DIG_SHA,    MODE_CBC   },   /* TLS_ECDH_RSA_WITH_AES_128_CBC_SHA */
     {0xC00F,KEX_ECDH_RSA,       ENC_AES256,     DIG_SHA,    MODE_CBC   },   /* TLS_ECDH_RSA_WITH_AES_256_CBC_SHA */
+    {0xC0FF,KEX_ECJPAKE,        ENC_AES,        DIG_NA,     MODE_CCM_8 },   /* TLS_ECJPAKE_WITH_AES_128_CCM_8 */
     {0xC010,KEX_ECDHE_RSA,      ENC_NULL,       DIG_SHA,    MODE_STREAM},   /* TLS_ECDHE_RSA_WITH_NULL_SHA */
     {0xC011,KEX_ECDHE_RSA,      ENC_RC4,        DIG_SHA,    MODE_STREAM},   /* TLS_ECDHE_RSA_WITH_RC4_128_SHA */
     {0xC012,KEX_ECDHE_RSA,      ENC_3DES,       DIG_SHA,    MODE_CBC   },   /* TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA */
@@ -2782,7 +2785,7 @@ tls13_hkdf_expand_label_context(int md, const StringInfo *secret,
                         const guint8 *context_hash, guint8 context_length,
                         guint16 out_len, guchar **out)
 {
-    /* draft-ietf-tls-tls13-23:
+    /* RFC 8446 Section 7.1:
      * HKDF-Expand-Label(Secret, Label, Context, Length) =
      *      HKDF-Expand(Secret, HkdfLabel, Length)
      * struct {
@@ -3042,8 +3045,7 @@ tls13_cipher_create(const char *label_prefix, int cipher_algo, int cipher_mode, 
     gcry_error_t        err;
 
     /*
-     * Calculate traffic keys based on
-     * https://tools.ietf.org/html/draft-ietf-tls-tls13-21#section-7
+     * Calculate traffic keys based on RFC 8446 Section 7.
      */
     key_length = (guint) gcry_cipher_get_algo_keylen(cipher_algo);
     iv_length = TLS13_AEAD_NONCE_LENGTH;
@@ -3980,10 +3982,6 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
         /* Sequence number is left-padded with zeroes and XORed with write_iv */
         phton64(nonce + nonce_len - 8, pntoh64(nonce + nonce_len - 8) ^ decoder->seq);
         ssl_debug_printf("%s seq %" G_GUINT64_FORMAT "\n", G_STRFUNC, decoder->seq);
-        /* sequence number for TLS 1.2 is incremented when calculating AAD. */
-        if (!is_v12) {
-            decoder->seq++;         /* Implicit sequence number for TLS 1.3. */
-        }
     }
 
     /* Set nonce and additional authentication data */
@@ -4006,9 +4004,7 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
     if (is_v12) {
         guchar aad[13];
         phton64(aad, decoder->seq);         /* record sequence number */
-        if (version == TLSV1DOT2_VERSION) {
-            decoder->seq++;                 /* Implicit sequence number for TLS 1.2. */
-        } else {
+        if (version == DTLSV1DOT2_VERSION) {
             phton16(aad, decoder->epoch);   /* DTLS 1.2 includes epoch. */
         }
         aad[8] = ct;                        /* TLSCompressed.type */
@@ -4069,6 +4065,15 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
 #else
     ssl_debug_printf("Libgcrypt is older than 1.6, unable to verify auth tag!\n");
 #endif
+
+    /*
+     * Increment the (implicit) sequence number for TLS 1.2/1.3. This is done
+     * after successful authentication to ensure that early data is skipped when
+     * CLIENT_EARLY_TRAFFIC_SECRET keys are unavailable.
+     */
+    if (version == TLSV1DOT2_VERSION || version == TLSV1DOT3_VERSION) {
+        decoder->seq++;
+    }
 
     ssl_print_data("Plaintext", out_str->data, ciphertext_len);
     *outl = ciphertext_len;
@@ -5094,12 +5099,12 @@ tls13_change_key(SslDecryptSession *ssl, ssl_master_key_map_t *mk_map,
 void
 tls13_key_update(SslDecryptSession *ssl, gboolean is_from_server)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-27#section-7.2
-     * traffic_secret_N+1 = HKDF-Expand-Label(
-     *                          traffic_secret_N,
-     *                          "traffic upd", "", Hash.length)
+    /* RFC 8446 Section 7.2:
+     * application_traffic_secret_N+1 =
+     *     HKDF-Expand-Label(application_traffic_secret_N,
+     *                       "traffic upd", "", Hash.length)
      *
-     * Note that traffic_secret_N is of the same length (Hash.length).
+     * Both application_traffic_secret_N are of the same length (Hash.length).
      */
     const SslCipherSuite *cipher_suite = ssl->cipher_suite;
     SslDecoder *decoder = is_from_server ? ssl->server : ssl->client;
@@ -5302,8 +5307,17 @@ ssl_load_keyfile(const gchar *ssl_keylog_filename, FILE **keylog_file,
         GMatchInfo *mi;
 
         line = fgets(buf, sizeof(buf), *keylog_file);
-        if (!line)
+        if (!line) {
+            if (feof(*keylog_file)) {
+                /* Ensure that newly appended keys can be read in the future. */
+                clearerr(*keylog_file);
+            } else if (ferror(*keylog_file)) {
+                ssl_debug_printf("%s Error while reading key log file, closing it!\n", G_STRFUNC);
+                fclose(*keylog_file);
+                *keylog_file = NULL;
+            }
             break;
+        }
 
         bytes_read = strlen(line);
         /* fgets includes the \n at the end of the line. */
@@ -6029,7 +6043,7 @@ static gint
 ssl_dissect_hnd_hello_ext_key_share_entry(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_info *pinfo,
                                           proto_tree *tree, guint32 offset, guint32 offset_end)
 {
-   /* https://tools.ietf.org/html/draft-ietf-tls-tls13-18#section-4.2.5
+   /* RFC 8446 Section 4.2.8
     *   struct {
     *       NamedGroup group;
     *       opaque key_exchange<1..2^16-1>;
@@ -6109,7 +6123,7 @@ ssl_dissect_hnd_hello_ext_pre_shared_key(ssl_common_dissect_t *hf, tvbuff_t *tvb
                                          proto_tree *tree, guint32 offset, guint32 offset_end,
                                          guint8 hnd_type)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.2.8
+    /* RFC 8446 Section 4.2.11
      *  struct {
      *      opaque identity<1..2^16-1>;
      *      uint32 obfuscated_ticket_age;
@@ -6196,7 +6210,7 @@ ssl_dissect_hnd_hello_ext_early_data(ssl_common_dissect_t *hf, tvbuff_t *tvb, pa
                                      proto_tree *tree, guint32 offset, guint32 offset_end _U_,
                                      guint8 hnd_type, SslDecryptSession *ssl)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.2.7
+    /* RFC 8446 Section 4.2.10
      *  struct {} Empty;
      *  struct {
      *      select (Handshake.msg_type) {
@@ -6230,10 +6244,11 @@ ssl_dissect_hnd_hello_ext_supported_versions(ssl_common_dissect_t *hf, tvbuff_t 
                                              SslSession *session)
 {
 
-   /* https://tools.ietf.org/html/draft-ietf-tls-tls13-18#section-4.2.1
+   /* RFC 8446 Section 4.2.1
     * struct {
-    *     ProtocolVersion versions<2..254>;
+    *     ProtocolVersion versions<2..254>; // ClientHello
     * } SupportedVersions;
+    * Note that ServerHello and HelloRetryRequest are handled by the caller.
     */
     guint32     versions_length, next_offset;
     /* ProtocolVersion versions<2..254> */
@@ -6271,7 +6286,7 @@ ssl_dissect_hnd_hello_ext_cookie(ssl_common_dissect_t *hf, tvbuff_t *tvb,
                                  packet_info *pinfo, proto_tree *tree,
                                  guint32 offset, guint32 offset_end)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-18#section-4.2.2
+    /* RFC 8446 Section 4.2.2
      *  struct {
      *      opaque cookie<1..2^16-1>;
      *  } Cookie;
@@ -6294,7 +6309,7 @@ static gint
 ssl_dissect_hnd_hello_ext_psk_key_exchange_modes(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_info *pinfo,
                                                  proto_tree *tree, guint32 offset, guint32 offset_end)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.2.6
+    /* RFC 8446 Section 4.2.9
      * enum { psk_ke(0), psk_dhe_ke(1), (255) } PskKeyExchangeMode;
      *
      * struct {
@@ -6323,7 +6338,7 @@ static guint32
 ssl_dissect_hnd_hello_ext_certificate_authorities(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_info *pinfo,
                                                   proto_tree *tree, guint32 offset, guint32 offset_end)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.2.3.1
+    /* RFC 8446 Section 4.2.4
      *  opaque DistinguishedName<1..2^16-1>;
      *  struct {
      *      DistinguishedName authorities<3..2^16-1>;
@@ -6336,7 +6351,7 @@ static gint
 ssl_dissect_hnd_hello_ext_oid_filters(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_info *pinfo,
                                       proto_tree *tree, guint32 offset, guint32 offset_end)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.3.2.1
+    /* RFC 8446 Section 4.2.5
      *  struct {
      *      opaque certificate_extension_oid<1..2^8-1>;
      *      opaque certificate_extension_values<0..2^16-1>;
@@ -6709,7 +6724,6 @@ ssl_dissect_hnd_hello_common(ssl_common_dissect_t *hf, tvbuff_t *tvb,
                              SslSession *session, SslDecryptSession *ssl,
                              gboolean from_server, gboolean is_hrr)
 {
-    nstime_t     gmt_unix_time;
     guint8       sessid_length;
     proto_tree  *rnd_tree;
     proto_tree  *ti_rnd;
@@ -6742,10 +6756,8 @@ ssl_dissect_hnd_hello_common(ssl_common_dissect_t *hf, tvbuff_t *tvb,
 
         rnd_tree = proto_item_add_subtree(ti_rnd, hf->ett.hs_random);
         /* show the time */
-        gmt_unix_time.secs  = tvb_get_ntohl(tvb, offset);
-        gmt_unix_time.nsecs = 0;
-        proto_tree_add_time(rnd_tree, hf->hf.hs_random_time,
-                tvb, offset, 4, &gmt_unix_time);
+        proto_tree_add_item(rnd_tree, hf->hf.hs_random_time,
+                tvb, offset, 4, ENC_TIME_SECS|ENC_BIG_ENDIAN);
         offset += 4;
 
         /* show the random bytes */
@@ -6971,7 +6983,7 @@ static guint
 ssl_dissect_hnd_hello_ext_supported_groups(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_info *pinfo,
                                            proto_tree *tree, guint32 offset, guint32 offset_end)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-18#section-4.2.4
+    /* RFC 8446 Section 4.2.7
      *  enum { ..., (0xFFFF) } NamedGroup;
      *  struct {
      *      NamedGroup named_group_list<2..2^16-1>
@@ -7538,7 +7550,7 @@ ssl_dissect_hnd_new_ses_ticket(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_i
      *      opaque ticket<0..2^16-1>;
      *  } NewSessionTicket;
      *
-     * https://tools.ietf.org/html/draft-ietf-tls-tls13-18#section-4.5.1
+     * RFC 8446 Section 4.6.1 (TLS 1.3):
      *  struct {
      *      uint32 ticket_lifetime;
      *      uint32 ticket_age_add;
@@ -7638,6 +7650,7 @@ ssl_dissect_hnd_hello_retry_request(ssl_common_dissect_t *hf, tvbuff_t *tvb,
      *     CipherSuite cipher_suite;        // not before draft -19
      *     Extension extensions<2..2^16-1>;
      * } HelloRetryRequest;
+     * Note: no longer used since draft -22
      */
     guint32     version;
     guint8      draft_version;
@@ -7664,7 +7677,7 @@ ssl_dissect_hnd_encrypted_extensions(ssl_common_dissect_t *hf, tvbuff_t *tvb,
                                      SslSession *session, SslDecryptSession *ssl,
                                      gboolean is_dtls)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-18#section-4.3.1
+    /* RFC 8446 Section 4.3.1
      * struct {
      *     Extension extensions<0..2^16-1>;
      * } EncryptedExtensions;
@@ -7683,7 +7696,8 @@ ssl_dissect_hnd_cert(ssl_common_dissect_t *hf, tvbuff_t *tvb, proto_tree *tree,
 {
     /* opaque ASN.1Cert<1..2^24-1>;
      *
-     * struct {
+     * Before RFC 8446 (TLS <= 1.2):
+     *  struct {
      *     select(certificate_type) {
      *
      *         // certificate type defined in RFC 7250
@@ -7694,9 +7708,9 @@ ssl_dissect_hnd_cert(ssl_common_dissect_t *hf, tvbuff_t *tvb, proto_tree *tree,
      *         case X.509:
      *           ASN.1Cert certificate_list<0..2^24-1>;
      *     };
-     * } Certificate;
+     *  } Certificate;
      *
-     * draft-ietf-tls-tls13-20:
+     * RFC 8446 (since draft -20):
      *  struct {
      *      select(certificate_type){
      *          case RawPublicKey:
@@ -7886,7 +7900,7 @@ ssl_dissect_hnd_cert_req(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_info *p
      *        CertificateExtension certificate_extensions<0..2^16-1>;
      *    } CertificateRequest;
      *
-     * draft-ietf-tls-tls13-19:
+     * RFC 8446 (since draft-ietf-tls-tls13-19):
      *
      *    struct {
      *        opaque certificate_request_context<0..2^8-1>;
@@ -8251,11 +8265,6 @@ ssl_dissect_hnd_extension(ssl_common_dissect_t *hf, tvbuff_t *tvb, proto_tree *t
             break;
         case SSL_HND_HELLO_EXT_RENEGOTIATION_INFO:
             offset = ssl_dissect_hnd_hello_ext_reneg_info(hf, tvb, pinfo, ext_tree, offset, next_offset);
-            break;
-        case SSL_HND_HELLO_EXT_DRAFT_VERSION_TLS13:
-            proto_tree_add_item(ext_tree, hf->hf.hs_ext_draft_version_tls13,
-                                tvb, offset, 2, ENC_BIG_ENDIAN);
-            offset += 2;
             break;
         default:
             proto_tree_add_item(ext_tree, hf->hf.hs_ext_data,
@@ -8670,6 +8679,9 @@ ssl_dissect_hnd_cli_keyex(ssl_common_dissect_t *hf, tvbuff_t *tvb,
     case KEX_SRP_SHA_RSA:
         /* XXX: implement support for SRP_SHA* */
         break;
+    case KEX_ECJPAKE: /* https://datatracker.ietf.org/doc/draft-cragie-tls-ecjpake/ used in Thread Commissioning */
+        /* XXX: implement support for ECJPAKE */
+        break;
     default:
         /* XXX: add info message for not supported KEX algo */
         break;
@@ -8723,6 +8735,9 @@ ssl_dissect_hnd_srv_keyex(ssl_common_dissect_t *hf, tvbuff_t *tvb, packet_info *
     case KEX_SRP_SHA_RSA:
         /* XXX: implement support for SRP_SHA* */
         break;
+    case KEX_ECJPAKE: /* https://datatracker.ietf.org/doc/draft-cragie-tls-ecjpake/ used in Thread Commissioning */
+        /* XXX: implement support for ECJPAKE */
+        break;
     default:
         /* XXX: add info message for not supported KEX algo */
         break;
@@ -8734,7 +8749,7 @@ void
 tls13_dissect_hnd_key_update(ssl_common_dissect_t *hf, tvbuff_t *tvb,
                              proto_tree *tree, guint32 offset)
 {
-    /* https://tools.ietf.org/html/draft-ietf-tls-tls13-18#section-4.5.3
+    /* RFC 8446 Section 4.6.3
      *  enum {
      *      update_not_requested(0), update_requested(1), (255)
      *  } KeyUpdateRequest;

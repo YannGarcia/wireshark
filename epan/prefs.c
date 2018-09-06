@@ -3210,10 +3210,7 @@ prefs_register_modules(void)
                                    "Wrap to beginning/end of file during search?",
                                    &prefs.gui_find_wrap);
 
-    prefs_register_bool_preference(gui_module, "use_pref_save",
-                                   "Settings dialogs use a save button",
-                                   "Settings dialogs use a save button?",
-                                   &prefs.gui_use_pref_save);
+    prefs_register_obsolete_preference(gui_module, "use_pref_save");
 
     prefs_register_bool_preference(gui_module, "geometry.save.position",
                                    "Save window position at exit",
@@ -4059,7 +4056,6 @@ pre_init_prefs(void)
     prefs.gui_fileopen_preview       = 3;
     prefs.gui_ask_unsaved            = TRUE;
     prefs.gui_find_wrap              = TRUE;
-    prefs.gui_use_pref_save          = FALSE;
     prefs.gui_update_enabled         = TRUE;
     prefs.gui_update_channel         = UPDATE_CHANNEL_STABLE;
     prefs.gui_update_interval        = 60*60*24; /* Seconds */
@@ -4216,15 +4212,27 @@ reset_pref(pref_t *pref)
 }
 
 static void
-reset_pref_cb(gpointer data, gpointer user_data _U_)
+reset_pref_cb(gpointer data, gpointer user_data)
 {
     pref_t *pref = (pref_t *) data;
+    module_t *module = (module_t *)user_data;
+
+    if (pref && (pref->type == PREF_RANGE || pref->type == PREF_DECODE_AS_RANGE)) {
+        /*
+         * Some dissectors expect the range (returned via prefs_get_range_value)
+         * to remain valid if it has not changed. If it did change, then we
+         * should set "prefs_changed_flags" to ensure that the preference apply
+         * callback is invoked. That callback will notify dissectors that it
+         * should no longer assume the range to be valid.
+         */
+        if (ranges_are_equal(*pref->varp.range, pref->default_val.range)) {
+            /* Optimization: do not invoke apply callback if nothing changed. */
+            return;
+        }
+        module->prefs_changed_flags |= prefs_get_effect_flags(pref);
+    }
     reset_pref(pref);
 }
-
-typedef struct {
-    module_t *module;
-} reset_pref_arg_t;
 
 /*
  * Reset all preferences for a module.
@@ -4232,10 +4240,8 @@ typedef struct {
 static gboolean
 reset_module_prefs(const void *key _U_, void *value, void *data _U_)
 {
-    reset_pref_arg_t arg;
-
-    arg.module = (module_t *)value;
-    g_list_foreach(arg.module->prefs, reset_pref_cb, &arg);
+    module_t *module = (module_t *)value;
+    g_list_foreach(module->prefs, reset_pref_cb, module);
     return FALSE;
 }
 
@@ -4803,8 +4809,8 @@ prefs_is_column_visible(const gchar *cols_hidden, fmt_data *cfmt)
             }
             if (cfmt->fmt == COL_CUSTOM) {
                 /*
-                 * A custom column has to have the
-                 * same custom field and occurrence.
+                 * A custom column has to have the same custom field,
+                 * occurrence and resolved settings.
                  */
                 if (cfmt_hidden.custom_fields && cfmt->custom_fields) {
                     if (strcmp(cfmt->custom_fields,
@@ -4814,8 +4820,9 @@ prefs_is_column_visible(const gchar *cols_hidden, fmt_data *cfmt)
                         cfmt_hidden.custom_fields = NULL;
                         continue;
                     }
-                    if (cfmt->custom_occurrence != cfmt_hidden.custom_occurrence) {
-                        /* Different occurrences. */
+                    if ((cfmt->custom_occurrence != cfmt_hidden.custom_occurrence) ||
+                        (cfmt->resolved != cfmt_hidden.resolved)) {
+                        /* Different occurrences or resolved settings. */
                         g_free(cfmt_hidden.custom_fields);
                         cfmt_hidden.custom_fields = NULL;
                         continue;
@@ -5362,7 +5369,6 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
     gchar    *dotp, *last_dotp;
     static gchar *filter_label = NULL;
     static gboolean filter_enabled = FALSE;
-    gchar    *filter_expr = NULL;
     module_t *module, *containing_module;
     pref_t   *pref;
     int type;
@@ -5370,15 +5376,18 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
     //The PRS_GUI field names are here for backwards compatibility
     //display filters have been converted to a UAT.
     if (strcmp(pref_name, PRS_GUI_FILTER_LABEL) == 0) {
+        /* Assume that PRS_GUI_FILTER_EXPR follows this preference. In case of
+         * malicious preference files, free the previous value to limit the size
+         * of leaked memory.  */
+        g_free(filter_label);
         filter_label = g_strdup(value);
     } else if (strcmp(pref_name, PRS_GUI_FILTER_ENABLED) == 0) {
         filter_enabled = (strcmp(value, "TRUE") == 0) ? TRUE : FALSE;
     } else if (strcmp(pref_name, PRS_GUI_FILTER_EXPR) == 0) {
-        filter_expr = g_strdup(value);
         /* Comments not supported for "old" preference style */
-        filter_expression_new(filter_label, filter_expr, "", filter_enabled);
+        filter_expression_new(filter_label, value, "", filter_enabled);
         g_free(filter_label);
-        g_free(filter_expr);
+        filter_label = NULL;
     } else if (strcmp(pref_name, "gui.version_in_start_page") == 0) {
         /* Convert deprecated value to closest current equivalent */
         if (g_ascii_strcasecmp(value, "true") == 0) {

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Setup development environment on Debian and derivatives such as Ubuntu
 #
 # Wireshark - Network traffic analyzer
@@ -13,16 +13,17 @@
 
 if [ "$1" = "--help" ]
 then
-	echo "\nUtility to setup a debian-based system for Wireshark Development.\n"
-	echo "The basic usage installs the needed software\n\n"
-	echo "Usage: $0 [--install-optional] [...other options...]\n"
-	echo "\t--install-optional: install optional software as well"
-	echo "\t[other]: other options are passed as-is to apt\n"
+	printf "\\nUtility to setup a debian-based system for Wireshark Development.\\n"
+	printf "The basic usage installs the needed software\\n\\n"
+	printf "Usage: %s [--install-optional] [--install-deb-deps] [...other options...]\\n" "$0"
+	printf "\\t--install-optional: install optional software as well\\n"
+	printf "\\t--install-deb-deps: install packages required to build the .deb file\\n"
+	printf "\\t[other]: other options are passed as-is to apt\\n"
 	exit 1
 fi
 
 # Check if the user is root
-if [ $(id -u) -ne 0 ]
+if [ "$(id -u)" -ne 0 ]
 then
 	echo "You must be root."
 	exit 1
@@ -33,6 +34,9 @@ do
 	if [ "$op" = "--install-optional" ]
 	then
 		ADDITIONAL=1
+	elif [ "$op" = "--install-deb-deps" ]
+	then
+		DEBDEPS=1
 	else
 		OPTIONS="$OPTIONS $op"
 	fi
@@ -71,12 +75,29 @@ ADDITIONAL_LIST="libnl-3-dev \
 	doxygen \
 	xsltproc"
 
-# Adds package $2 to list variable $1 if the package is found
-add_package() {
-	local list="$1" pkgname="$2"
+DEBDEPS_LIST="debhelper \
+	po-debconf \
+	python-ply \
+	docbook-xsl \
+	docbook-xml \
+	libxml2-utils \
+	quilt"
 
+# Adds package $2 to list variable $1 if the package is found.
+# If $3 is given, then this version requirement must be satisfied.
+add_package() {
+	local list="$1" pkgname="$2" versionreq="$3" version
+
+	version=$(apt-cache show "$pkgname" 2>/dev/null |
+		awk '/^Version:/{ print $2; exit}')
 	# fail if the package is not known
-	[ -n "$(apt-cache show "$pkgname" 2>/dev/null)" ] || return 1
+	if [ -z "$version" ]; then
+		return 1
+	elif [ -n "$versionreq" ]; then
+		# Require minimum version or fail.
+		# shellcheck disable=SC2086
+		dpkg --compare-versions $version $versionreq || return 1
+	fi
 
 	# package is found, append it to list
 	eval "${list}=\"\${${list}} \${pkgname}\""
@@ -99,7 +120,7 @@ echo "libssh-gcrypt-dev and libssh-dev are unavailable" >&2
 
 # libgnutls-dev: Debian <= jessie, Ubuntu <= 16.04
 # libgnutls28-dev: Debian >= wheezy-backports, Ubuntu >= 12.04
-add_package ADDITIONAL_LIST libgnutls28-dev ||
+add_package ADDITIONAL_LIST libgnutls28-dev ">= 3.2.14-1" ||
 add_package ADDITIONAL_LIST libgnutls-dev ||
 echo "libgnutls28-dev and libgnutls-dev are unavailable" >&2
 
@@ -115,13 +136,21 @@ then
 	ACTUAL_LIST="$ACTUAL_LIST $ADDITIONAL_LIST"
 fi
 
-apt-get install $ACTUAL_LIST $OPTIONS
-if [ $? != 0 ]
+if [ $DEBDEPS ]
 then
-	exit 2
+	ACTUAL_LIST="$ACTUAL_LIST $DEBDEPS_LIST"
 fi
+
+apt-get update || exit 2
+# shellcheck disable=SC2086
+apt-get install $ACTUAL_LIST $OPTIONS || exit 2
 
 if [ ! $ADDITIONAL ]
 then
-	echo "\n*** Optional packages not installed. Rerun with --install-optional to have them.\n"
+	printf "\\n*** Optional packages not installed. Rerun with --install-optional to have them.\\n"
+fi
+
+if [ ! $DEBDEPS ]
+then
+	printf "\n*** Debian packages build deps not installed. Rerun with --install-deb-deps to have them.\n"
 fi

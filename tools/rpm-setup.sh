@@ -38,8 +38,8 @@ do
 	fi
 done
 
-BASIC_LIST="cmake \
-	gcc \
+BASIC_LIST="gcc \
+	gcc-c++ \
 	flex \
 	bison \
 	python \
@@ -68,10 +68,10 @@ ADDITIONAL_LIST="libnl3-devel \
 	snappy-devel \
 	lz4 \
 	json-glib-devel \
-	ninja-build \
 	doxygen \
 	libxml2-devel \
-	spandsp-devel"
+	spandsp-devel \
+	rpm-build"
 
 # Guess which package manager we will use
 PM=`which zypper 2> /dev/null ||
@@ -86,6 +86,7 @@ fi
 
 case $PM in
 	*/zypper)
+		PM_OPT="--non-interactive"
 		PM_SEARCH="search -x --provides"
 		;;
 	*/dnf)
@@ -108,6 +109,9 @@ add_package() {
 	# package is found, append it to list
 	eval "${list}=\"\${${list}} \${pkgname}\""
 }
+
+add_package BASIC_LIST cmake3 || add_package BASIC_LIST cmake ||
+echo "cmake is unavailable" >&2
 
 add_package BASIC_LIST glib2 || add_package BASIC_LIST libglib-2_0-0 ||
 echo "glib2 is unavailable" >&2
@@ -168,13 +172,18 @@ echo "perl-Pod-Html is unavailable" >&2
 add_package ADDITIONAL_LIST asciidoctor || add_package ADDITIONAL_LIST rubygem-asciidoctor.noarch ||
 echo "asciidoctor is unavailable" >&2
 
+add_package ADDITIONAL_LIST ninja || add_package ADDITIONAL_LIST ninja-build ||
+echo "ninja is unavailable" >&2
+
+ACTUAL_LIST=$BASIC_LIST
+
 # Now arrange for optional support libraries
 if [ $ADDITIONAL ]
 then
 	ACTUAL_LIST="$ACTUAL_LIST $ADDITIONAL_LIST"
 fi
 
-$PM install $ACTUAL_LIST $OPTIONS
+$PM $PM_OPT install $ACTUAL_LIST $OPTIONS
 
 # Now arrange for optional support libraries
 if [ ! $ADDITIONAL ]

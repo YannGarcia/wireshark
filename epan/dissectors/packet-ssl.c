@@ -434,9 +434,9 @@ ssl_parse_old_keys(void)
 
     /* Import old-style keys */
     if (ssldecrypt_uat && ssl_keys_list && ssl_keys_list[0]) {
-        old_keys = wmem_strsplit(NULL, ssl_keys_list, ";", 0);
+        old_keys = g_strsplit(ssl_keys_list, ";", 0);
         for (i = 0; old_keys[i] != NULL; i++) {
-            parts = wmem_strsplit(NULL, old_keys[i], ",", 5);
+            parts = g_strsplit(old_keys[i], ",", 5);
             if (parts[0] && parts[1] && parts[2] && parts[3]) {
                 gchar *path = uat_esc(parts[3], (guint)strlen(parts[3]));
                 const gchar *password = parts[4] ? parts[4] : "";
@@ -450,9 +450,9 @@ ssl_parse_old_keys(void)
                 }
                 wmem_free(NULL, uat_entry);
             }
-            wmem_free(NULL, parts);
+            g_strfreev(parts);
         }
-        wmem_free(NULL, old_keys);
+        g_strfreev(old_keys);
     }
 }
 
@@ -514,8 +514,8 @@ ssl_follow_tap_listener(void *tapdata, packet_info *pinfo, epan_dissect_t *edt _
                                               appl_data->plain_data,
                                               appl_data->data_len);
 
-        /* Append the record to the follow_info structure. */
-        follow_info->payload = g_list_append(follow_info->payload, follow_record);
+        /* Add the record to the follow_info structure. */
+        follow_info->payload = g_list_prepend(follow_info->payload, follow_record);
         follow_info->bytes_written[from] += appl_data->data_len;
     }
 
@@ -2333,7 +2333,7 @@ dissect_ssl3_handshake(tvbuff_t *tvb, packet_info *pinfo,
                 break;
 
             case SSL_HND_END_OF_EARLY_DATA:
-                /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.5 */
+                /* RFC 8446 Section 4.5 */
                 if (!is_from_server && ssl) {
                     ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file, &ssl_master_key_map);
                     tls13_change_key(ssl, &ssl_master_key_map, FALSE, TLS_SECRET_HANDSHAKE);
@@ -2478,9 +2478,9 @@ dissect_ssl3_heartbeat(tvbuff_t *tvb, packet_info *pinfo,
 
     /* now set the text in the record layer line */
     if (type && decrypted) {
-        col_append_fstr(pinfo->cinfo, COL_INFO, "Heartbeat %s", type);
+        col_append_sep_fstr(pinfo->cinfo, COL_INFO, NULL, "Heartbeat %s", type);
     } else {
-        col_append_str(pinfo->cinfo, COL_INFO, "Encrypted Heartbeat");
+        col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, "Encrypted Heartbeat");
     }
 
     if (type && decrypted) {
@@ -3917,8 +3917,7 @@ tls_get_cipher_info(packet_info *pinfo, int *cipher_algo, int *cipher_mode, int 
 /* TLS Exporters {{{ */
 #if GCRYPT_VERSION_NUMBER >= 0x010600 /* 1.6.0 */
 /**
- * Computes the TLS 1.3 Exporter value
- * (https://tools.ietf.org/html/draft-ietf-tls-tls13-27#section-7.5).
+ * Computes the TLS 1.3 Exporter value (RFC 8446 Section 7.5).
  *
  * "secret" is the [early_]exporter_master_secret. On success, TRUE is returned
  * and the key is returned via "out" (free with "wmem_free(NULL, out)").

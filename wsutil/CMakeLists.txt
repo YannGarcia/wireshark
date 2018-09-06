@@ -9,14 +9,12 @@
 
 include(UseABICheck)
 
-if(NOT WIN32)
-	add_definitions(-DPLUGIN_DIR=\"${CMAKE_INSTALL_FULL_LIBDIR}/wireshark/plugins\")
-endif()
+add_definitions(-DPLUGIN_DIR=\"${CMAKE_INSTALL_PREFIX}/${PLUGIN_INSTALL_LIBDIR}\")
+add_definitions(-DEXTCAP_DIR=\"${CMAKE_INSTALL_PREFIX}/${EXTCAP_INSTALL_LIBDIR}\")
 
 set(WSUTIL_PUBLIC_HEADERS
 	adler32.h
 	base32.h
-	base64.h
 	bits_count_ones.h
 	bits_ctz.h
 	bitswap.h
@@ -35,6 +33,7 @@ set(WSUTIL_PUBLIC_HEADERS
 	crc16.h
 	crc16-plain.h
 	crc32.h
+	curve25519.h
 	eax.h
 	filesystem.h
 	frequency-utils.h
@@ -77,7 +76,6 @@ set(WSUTIL_PUBLIC_HEADERS
 set(WSUTIL_COMMON_FILES
 	adler32.c
 	base32.c
-	base64.c
 	bitswap.c
 	buffer.c
 	clopts_common.c
@@ -92,6 +90,7 @@ set(WSUTIL_COMMON_FILES
 	crc7.c
 	crc8.c
 	crc11.c
+	curve25519.c
 	dot11decrypt_wep.c
 	eax.c
 	filesystem.c
@@ -258,20 +257,26 @@ add_library(wsutil
 	${CMAKE_BINARY_DIR}/image/libwsutil.rc
 )
 
-set(FULL_SO_VERSION "0.0.0")
-
 set_target_properties(wsutil PROPERTIES
 	PREFIX "lib"
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
 	LINK_FLAGS "${WS_LINK_FLAGS}"
-	VERSION ${FULL_SO_VERSION} SOVERSION 0
+	VERSION "0.0.0" SOVERSION 0
 	FOLDER "DLLs"
 )
 
 if(ENABLE_APPLICATION_BUNDLE)
-	set_target_properties(wsutil PROPERTIES
-		LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
-	)
+
+	if(NOT CMAKE_CFG_INTDIR STREQUAL ".")
+		# Xcode
+		set_target_properties(wsutil PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/$<CONFIG>/Wireshark.app/Contents/Frameworks
+		)
+	else()
+		set_target_properties(wsutil PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
+		)
+	endif()
 endif()
 
 ABICHECK(libwsutil)
@@ -289,6 +294,7 @@ add_custom_command(OUTPUT libwsutil.abi.tar.gz
 target_link_libraries(wsutil ${wsutil_LIBS})
 
 install(TARGETS wsutil
+	EXPORT WiresharkTargets
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

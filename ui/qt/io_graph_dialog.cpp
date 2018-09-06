@@ -367,7 +367,7 @@ IOGraphDialog::IOGraphDialog(QWidget &parent, CaptureFile &cf) :
     QCPPlotTitle *title = new QCPPlotTitle(iop);
     iop->plotLayout()->insertRow(0);
     iop->plotLayout()->addElement(0, 0, title);
-    title->setText(tr("Wireshark IO Graphs: %1").arg(cap_file_.fileTitle()));
+    title->setText(tr("Wireshark IO Graphs: %1").arg(cap_file_.fileDisplayName()));
 
     tracer_ = new QCPItemTracer(iop);
     iop->addItem(tracer_);
@@ -1402,7 +1402,7 @@ void IOGraphDialog::on_buttonBox_accepted()
 
     QString save_file = path.canonicalPath();
     if (!file_closed_) {
-        save_file += QString("/%1").arg(cap_file_.fileTitle());
+        save_file += QString("/%1").arg(cap_file_.fileBaseName());
     }
     file_name = WiresharkFileDialog::getSaveFileName(this, wsApp->windowTitleString(tr("Save Graph As" UTF8_HORIZONTAL_ELLIPSIS)),
                                              save_file, filter, &extension);
@@ -1506,7 +1506,8 @@ IOGraph::IOGraph(QCustomPlot *parent) :
                           TL_REQUIRES_PROTO_TREE,
                           tapReset,
                           tapPacket,
-                          tapDraw);
+                          tapDraw,
+                          NULL);
     if (error_string) {
 //        QMessageBox::critical(this, tr("%1 failed to register tap listener").arg(name_),
 //                             error_string->str);

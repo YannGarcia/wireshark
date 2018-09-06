@@ -34,7 +34,6 @@
 #include <epan/proto_data.h>
 #include <epan/export_object.h>
 
-#include <wsutil/base64.h>
 #include "packet-http.h"
 #include "packet-tcp.h"
 #include "packet-ssl.h"
@@ -146,10 +145,8 @@ static dissector_handle_t http_ssl_handle;
 static dissector_handle_t http_sctp_handle;
 
 static dissector_handle_t media_handle;
-static dissector_handle_t websocket_handle;
 static dissector_handle_t http2_handle;
 static dissector_handle_t sstp_handle;
-static dissector_handle_t spdy_handle;
 static dissector_handle_t ntlmssp_handle;
 static dissector_handle_t gssapi_handle;
 
@@ -265,11 +262,6 @@ static gboolean http_decompress_body = FALSE;
 #define SCTP_DEFAULT_RANGE "80"
 #define SSL_DEFAULT_RANGE "443"
 
-#define UPGRADE_WEBSOCKET 1
-#define UPGRADE_HTTP2 2
-#define UPGRADE_SSTP 3
-#define UPGRADE_SPDY 4
-
 static range_t *global_http_sctp_range = NULL;
 static range_t *global_http_ssl_range = NULL;
 
@@ -307,7 +299,7 @@ typedef struct {
 	char     *content_encoding;
 	gboolean transfer_encoding_chunked;
 	http_transfer_coding transfer_encoding;
-	guint8  upgrade;
+	char    *upgrade;
 } headers_t;
 
 static int is_http_request_or_reply(const gchar *data, int linelen,
@@ -332,6 +324,7 @@ static gboolean check_auth_kerberos(proto_item *hdr_item, tvbuff_t *tvb,
 
 static dissector_table_t port_subdissector_table;
 static dissector_table_t media_type_subdissector_table;
+static dissector_table_t upgrade_subdissector_table;
 static heur_dissector_list_t heur_subdissector_list;
 
 /* Used for HTTP Export Object feature */
@@ -1171,7 +1164,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * which is done by disabling body desegmentation.
 		 */
 		try_desegment_body = (http_desegment_body &&
-			(!(conv_data->request_method && g_str_equal(conv_data->request_method, "HEAD"))) &&
+			!(http_type == HTTP_RESPONSE && conv_data->request_method && g_str_equal(conv_data->request_method, "HEAD")) &&
 			!end_of_stream);
 		if (!req_resp_hdrs_do_reassembly(tvb, offset, pinfo,
 		    http_desegment_headers, try_desegment_body)) {
@@ -1227,7 +1220,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	headers.content_encoding = NULL; /* content encoding not known yet */
 	headers.transfer_encoding_chunked = FALSE;
 	headers.transfer_encoding = HTTP_TE_NONE;
-	headers.upgrade = 0; /* assume we're not upgrading */
+	headers.upgrade = NULL;         /* assume no upgrade header */
 	saw_req_resp_or_header = FALSE;	/* haven't seen anything yet */
 	while (tvb_offset_exists(tvb, offset)) {
 		/*
@@ -1274,7 +1267,6 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		/*
 		 * No.  Does it look like a header?
 		 */
-		linep = line;
 		colon_offset = offset;
 
 		linep = (const guchar *)memchr(line, ':', linelen);
@@ -1867,16 +1859,44 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		offset += datalen;
 	}
 
-	if (http_type == HTTP_RESPONSE && conv_data->upgrade == UPGRADE_SSTP) {
-		conv_data->startframe = pinfo->num + 1;
-		headers.upgrade = conv_data->upgrade;
-	}
+	/* Detect protocol changes after receiving full response headers. */
+	if (conv_data->request_method && http_type == HTTP_RESPONSE && pinfo->desegment_offset <= 0 && pinfo->desegment_len <= 0) {
+		dissector_handle_t next_handle = NULL;
+		gboolean server_acked = FALSE;
 
-	if (http_type == HTTP_RESPONSE && headers.upgrade && pinfo->desegment_offset<=0 && pinfo->desegment_len<=0) {
-		conv_data->upgrade = headers.upgrade;
-		conv_data->startframe = pinfo->num + 1;
-		copy_address_wmem(wmem_file_scope(), &conv_data->server_addr, &pinfo->src);
-		conv_data->server_port = pinfo->srcport;
+		/*
+		 * SSTP uses a special request method (instead of the Upgrade
+		 * header) and expects a 200 response to set up the session.
+		 */
+		if (strcmp(conv_data->request_method, "SSTP_DUPLEX_POST") == 0 && conv_data->response_code == 200) {
+			next_handle = sstp_handle;
+			server_acked = TRUE;
+		}
+
+		/*
+		 * An HTTP/1.1 upgrade only proceeds if the server responds
+		 * with 101 Switching Protocols. See RFC 7230 Section 6.7.
+		 */
+		if (headers.upgrade && conv_data->response_code == 101) {
+			next_handle = dissector_get_string_handle(upgrade_subdissector_table, headers.upgrade);
+			if (!next_handle) {
+				char *slash_pos = strchr(headers.upgrade, '/');
+				if (slash_pos) {
+					/* Try again without version suffix. */
+					next_handle = dissector_get_string_handle(upgrade_subdissector_table,
+							wmem_strndup(wmem_packet_scope(), headers.upgrade, slash_pos - headers.upgrade));
+				}
+			}
+			server_acked = TRUE;
+		}
+
+		if (server_acked) {
+			conv_data->startframe = pinfo->num;
+			conv_data->startoffset = offset;
+			conv_data->next_handle = next_handle;
+			copy_address_wmem(wmem_file_scope(), &conv_data->server_addr, &pinfo->src);
+			conv_data->server_port = pinfo->srcport;
+		}
 	}
 
 	tap_queue_packet(http_tap, pinfo, stat_info);
@@ -2628,7 +2648,6 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 			} else if (strncmp(data, "SSTP_DUPLEX_POST", indx) == 0) {  /* MS SSTP */
 				*type = HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
-				conv_data->upgrade = UPGRADE_SSTP;
 			}
 			break;
 
@@ -3166,16 +3185,7 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			break;
 
 		case HDR_UPGRADE:
-			if (g_ascii_strncasecmp(value, "WebSocket", value_len) == 0) {
-				eh_ptr->upgrade = UPGRADE_WEBSOCKET;
-			}
-			/* Check if upgrade is HTTP 2.0 (Start with h2...) */
-			if ( (g_str_has_prefix(value, "h2")) == 1){
-				eh_ptr->upgrade = UPGRADE_HTTP2;
-			}
-			if (g_ascii_strncasecmp(value, "spdy/", 5) == 0) {
-				eh_ptr->upgrade = UPGRADE_SPDY;
-			}
+			eh_ptr->upgrade = wmem_ascii_strdown(wmem_packet_scope(), value, value_len);
 			break;
 
 		case HDR_COOKIE:
@@ -3300,6 +3310,7 @@ check_auth_basic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value)
 	const char **header;
 	size_t hdrlen;
 	proto_tree *hdr_tree;
+	gsize len;
 
 	for (header = &basic_headers[0]; *header != NULL; header++) {
 		hdrlen = strlen(*header);
@@ -3311,7 +3322,10 @@ check_auth_basic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value)
 				hdr_tree = NULL;
 			value += hdrlen;
 
-			ws_base64_decode_inplace(value);
+			if (strlen(value) > 1) {
+				g_base64_decode_inplace(value, &len);
+				value[len] = 0;
+			}
 			proto_tree_add_string(hdr_tree, hf_http_basic, tvb,
 			    0, 0, value);
 
@@ -3339,6 +3353,7 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 	char *data_val;
 	proto_item *hidden_item;
 	proto_item *pi;
+	gsize len;
 
 	for (header = &basic_headers[0]; *header != NULL; header++) {
 		hdrlen = strlen(*header);
@@ -3361,7 +3376,10 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				if ( ch_ptr != NULL ) {
 					data_len = (int)(ch_ptr - value + 1);
 					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					ws_base64_decode_inplace(data_val);
+					if (data_len > 1) {
+						g_base64_decode_inplace(data_val, &len);
+						data_val[len] = 0;
+					}
 					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_user, tvb,
 					    offset , data_len - 1, data_val);
 					PROTO_ITEM_SET_GENERATED(pi);
@@ -3376,7 +3394,10 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				if ( ch_ptr != NULL ) {
 					data_len = (int)(ch_ptr - value + 1);
 					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					ws_base64_decode_inplace(data_val);
+					if (data_len > 1) {
+						g_base64_decode_inplace(data_val, &len);
+						data_val[len] = 0;
+					}
 					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_domain, tvb,
 					    offset, data_len - 1, data_val);
 					PROTO_ITEM_SET_GENERATED(pi);
@@ -3391,7 +3412,10 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				if ( ch_ptr != NULL ) {
 					data_len = (int)(ch_ptr - value + 1);
 					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					ws_base64_decode_inplace(data_val);
+					if (data_len > 1) {
+						g_base64_decode_inplace(data_val, &len);
+						data_val[len] = 0;
+					}
 					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_passwd, tvb,
 					    offset, data_len - 1, data_val);
 					PROTO_ITEM_SET_GENERATED(pi);
@@ -3406,7 +3430,10 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				if ( ch_ptr != NULL ) {
 					data_len = (int)(ch_ptr - value + 1);
 					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					ws_base64_decode_inplace(data_val);
+					if (data_len > 1) {
+						g_base64_decode_inplace(data_val, &len);
+						data_val[len] = 0;
+					}
 					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_session, tvb,
 					    offset, data_len - 1, data_val);
 					PROTO_ITEM_SET_GENERATED(pi);
@@ -3441,29 +3468,23 @@ dissect_http_on_stream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 {
 	int		offset = 0;
 	int		len;
-	dissector_handle_t next_handle = NULL;
 
 	while (tvb_reported_length_remaining(tvb, offset) > 0) {
-		if (conv_data->upgrade == UPGRADE_WEBSOCKET && pinfo->num >= conv_data->startframe) {
-			next_handle = websocket_handle;
-		}
-		if (conv_data->upgrade == UPGRADE_HTTP2 && pinfo->num >= conv_data->startframe) {
-			next_handle = http2_handle;
-		}
-		if (conv_data->upgrade == UPGRADE_SSTP && conv_data->response_code == 200 && pinfo->num >= conv_data->startframe) {
-			next_handle = sstp_handle;
-		}
-		if (conv_data->upgrade == UPGRADE_SPDY && pinfo->num >= conv_data->startframe) {
-			next_handle = spdy_handle;
-		}
-		if (next_handle) {
+		/* Switch protocol if the data starts after response headers. */
+		if (conv_data->startframe &&
+				(pinfo->num > conv_data->startframe ||
+				(pinfo->num == conv_data->startframe && offset >= conv_data->startoffset))) {
 			/* Increase pinfo->can_desegment because we are traversing
 			 * http and want to preserve desegmentation functionality for
 			 * the proxied protocol
 			 */
 			if (pinfo->can_desegment > 0)
 				pinfo->can_desegment++;
-			call_dissector_only(next_handle, tvb_new_subset_remaining(tvb, offset), pinfo, tree, NULL);
+			if (conv_data->next_handle) {
+				call_dissector_only(conv_data->next_handle, tvb_new_subset_remaining(tvb, offset), pinfo, tree, NULL);
+			} else {
+				call_data_dissector(tvb_new_subset_remaining(tvb, offset), pinfo, tree);
+			}
 			break;
 		}
 		len = dissect_http_message(tvb, offset, pinfo, tree, conv_data, "HTTP", proto_http, end_of_stream);
@@ -3493,7 +3514,7 @@ dissect_http_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 	/* Call HTTP2 dissector directly when detected via heuristics, but not
 	 * when it was upgraded (the conversation started with HTTP). */
 	if (conversation_get_proto_data(conversation, proto_http2) &&
-	    conv_data->upgrade != UPGRADE_HTTP2) {
+	    !conv_data->startframe) {
 		if (pinfo->can_desegment > 0)
 			pinfo->can_desegment++;
 		return call_dissector_only(http2_handle, tvb, pinfo, tree, data);
@@ -3508,8 +3529,12 @@ dissect_http_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 	   conv_data->request_method &&
 	   strncmp(conv_data->request_method, "CONNECT", 7) == 0 &&
 	   conv_data->request_uri) {
-		if(conv_data->startframe == 0 && !pinfo->fd->flags.visited)
+		if (conv_data->startframe == 0 && !PINFO_FD_VISITED(pinfo)) {
 			conv_data->startframe = pinfo->num;
+			conv_data->startoffset = 0;
+			copy_address_wmem(wmem_file_scope(), &conv_data->server_addr, &pinfo->dst);
+			conv_data->server_port = pinfo->destport;
+		}
 		http_payload_subdissector(tvb, tree, pinfo, conv_data, data);
 
 		return tvb_captured_length(tvb);
@@ -4037,6 +4062,12 @@ proto_register_http(void)
 		"Internet media type", proto_http, FT_STRING, BASE_NONE);
 
 	/*
+	 * Maps the lowercase Upgrade header value.
+	 * https://tools.ietf.org/html/rfc7230#section-8.6
+	 */
+	upgrade_subdissector_table = register_dissector_table("http.upgrade", "HTTP Upgrade", proto_http, FT_STRING, BASE_NONE);
+
+	/*
 	 * Heuristic dissectors SHOULD register themselves in
 	 * this table using the standard heur_dissector_add()
 	 * function.
@@ -4105,7 +4136,6 @@ proto_reg_handoff_http(void)
 	dissector_handle_t ssdp_handle;
 
 	media_handle = find_dissector_add_dependency("media", proto_http);
-	websocket_handle = find_dissector_add_dependency("websocket", proto_http);
 	http2_handle = find_dissector("http2");
 	/*
 	 * XXX - is there anything to dissect in the body of an SSDP
@@ -4123,7 +4153,6 @@ proto_reg_handoff_http(void)
 	ntlmssp_handle = find_dissector_add_dependency("ntlmssp", proto_http);
 	gssapi_handle = find_dissector_add_dependency("gssapi", proto_http);
 	sstp_handle = find_dissector_add_dependency("sstp", proto_http);
-	spdy_handle = find_dissector_add_dependency("spdy", proto_http);
 
 	stats_tree_register("http", "http",     "HTTP/Packet Counter",   0, http_stats_tree_packet,      http_stats_tree_init, NULL );
 	stats_tree_register("http", "http_req", "HTTP/Requests",         0, http_req_stats_tree_packet,  http_req_stats_tree_init, NULL );

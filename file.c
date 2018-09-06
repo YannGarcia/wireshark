@@ -267,11 +267,6 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
      the packets, so we know how much we'll ultimately need. */
   ws_buffer_init(&cf->buf, 1500);
 
-  /* Create new epan session for dissection.
-   * (The old one was freed in cf_close().)
-   */
-  cf->epan = ws_epan_new(cf);
-
   /* We're about to start reading the file. */
   cf->state = FILE_READ_IN_PROGRESS;
 
@@ -313,11 +308,15 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
   cf->provider.prev_cap = NULL;
   cf->cum_bytes = 0;
 
+  /* Create new epan session for dissection.
+   * (The old one was freed in cf_close().)
+   */
+  cf->epan = ws_epan_new(cf);
+
   packet_list_queue_draw();
   cf_callback_invoke(cf_cb_file_opened, cf);
 
-  if ((cf->cd_t == WTAP_FILE_TYPE_SUBTYPE_BER)
-      || (cf->cd_t == WTAP_FILE_TYPE_SUBTYPE_PEM)) {
+  if (cf->cd_t == WTAP_FILE_TYPE_SUBTYPE_BER) {
     /* tell the BER dissector the file name */
     ber_set_filename(cf->filename);
   }
@@ -358,6 +357,7 @@ cf_close(capture_file *cf)
 
   /* Die if we're in the middle of reading a file. */
   g_assert(cf->state != FILE_READ_IN_PROGRESS);
+  g_assert(!cf->read_lock);
 
   cf_callback_invoke(cf_cb_file_closing, cf);
 
@@ -499,6 +499,18 @@ cf_read(capture_file *cf, gboolean reloading)
   gboolean             compiled;
   volatile gboolean    is_read_aborted = FALSE;
 
+  /* The update_progress_dlg call below might end up accepting a user request to
+   * trigger redissection/rescans which can modify/destroy the dissection
+   * context ("cf->epan"). That condition should be prevented by callers, but in
+   * case it occurs let's fail gracefully.
+   */
+  if (cf->read_lock) {
+    g_warning("Failing due to recursive cf_read(\"%s\", %d) call!",
+              cf->filename, reloading);
+    return CF_READ_ERROR;
+  }
+  cf->read_lock = TRUE;
+
   /* Compile the current display filter.
    * We assume this will not fail since cf->dfilter is only set in
    * cf_filter IFF the filter was valid.
@@ -598,6 +610,12 @@ cf_read(capture_file *cf, gboolean reloading)
           packets_bar_update();
           g_timer_start(prog_timer);
         }
+        /*
+         * The previous GUI triggers should not have destroyed the running
+         * session. If that did happen, it could blow up when read_record tries
+         * to use the destroyed edt.session, so detect it right here.
+         */
+        g_assert(edt.session == cf->epan);
       }
 
       if (cf->state == FILE_READ_ABORTED) {
@@ -680,6 +698,10 @@ cf_read(capture_file *cf, gboolean reloading)
     packet_list_select_first_row();
   }
 
+  /* It is safe again to execute redissections. */
+  g_assert(cf->read_lock);
+  cf->read_lock = FALSE;
+
   if (is_read_aborted) {
     /*
      * Well, the user decided to exit Wireshark while reading this *offline*
@@ -687,7 +709,14 @@ cf_read(capture_file *cf, gboolean reloading)
      * cf_continue_tail). Clean up accordingly.
      */
     cf_close(cf);
+    cf->redissection_queued = RESCAN_NONE;
     return CF_READ_ABORTED;
+  }
+
+  if (cf->redissection_queued != RESCAN_NONE) {
+    /* Redissection was queued up. Clear the request and perform it now. */
+    gboolean redissect = cf->redissection_queued == RESCAN_REDISSECT;
+    rescan_packets(cf, "Reprocessing", "all packets", redissect);
   }
 
   if (cf->stop_flag) {
@@ -993,6 +1022,53 @@ cf_get_display_name(capture_file *cf)
   return displayname;
 }
 
+gchar *
+cf_get_basename(capture_file *cf)
+{
+  gchar *displayname;
+
+  /* Return a name to use in the GUI for the basename for files to
+     which we save statistics */
+  if (!cf->is_tempfile) {
+    /* Get the last component of the file name, and use that. */
+    if (cf->filename) {
+      displayname = g_filename_display_basename(cf->filename);
+
+      /* If the file name ends with any extension that corresponds
+         to a file type we support - including compressed versions
+         of those files - strip it off. */
+      size_t displayname_len = strlen(displayname);
+      GSList *extensions = wtap_get_all_file_extensions_list();
+      GSList *suffix;
+      for (suffix = extensions; suffix != NULL; suffix = g_slist_next(suffix)) {
+        /* Does the file name end with that extension? */
+        const char *extension = (char *)suffix->data;
+        size_t extension_len = strlen(extension);
+        if (displayname_len > extension_len &&
+          displayname[displayname_len - extension_len - 1] == '.' &&
+          strcmp(&displayname[displayname_len - extension_len], extension) == 0) {
+            /* Yes.  Strip the extension off, and return the result. */
+            displayname[displayname_len - extension_len - 1] = '\0';
+            break;
+        }
+      }
+      wtap_free_extensions_list(extensions);
+    } else {
+      displayname=g_strdup("");
+    }
+  } else {
+    /* The file we read is a temporary file from a live capture or
+       a merge operation; we don't mention its name, but, if it's
+       from a capture, give the source of the capture. */
+    if (cf->source) {
+      displayname = g_strdup(cf->source);
+    } else {
+      displayname = g_strdup("");
+    }
+  }
+  return displayname;
+}
+
 void cf_set_tempfile_source(capture_file *cf, gchar *source) {
   if (cf->source) {
     g_free(cf->source);
@@ -1186,7 +1262,9 @@ read_record(capture_file *cf, dfilter_t *dfcode, epan_dissect_t *edt,
       cf->packet_comment_count++;
     cf->f_datalen = offset + fdlocal.cap_len;
 
-    if (!cf->redissecting) {
+    /* When a redissection is in progress (or queued), do not process packets.
+     * This will be done once all (new) packets have been scanned. */
+    if (!cf->redissecting && cf->redissection_queued == RESCAN_NONE) {
       add_packet_to_packet_list(fdata, cf, edt, dfcode,
                                 cinfo, rec, buf, TRUE);
     }
@@ -1429,12 +1507,18 @@ cf_filter_packets(capture_file *cf, gchar *dftext, gboolean force)
 
 
   /* Now rescan the packet list, applying the new filter, but not
-     throwing away information constructed on a previous pass. */
-  if (cf->state != FILE_CLOSED) {
-    if (dftext == NULL) {
-      rescan_packets(cf, "Resetting", "Filter", FALSE);
-    } else {
-      rescan_packets(cf, "Filtering", dftext, FALSE);
+   * throwing away information constructed on a previous pass.
+   * If a dissection is already in progress, queue it.
+   */
+  if (cf->redissection_queued == RESCAN_NONE) {
+    if (cf->read_lock) {
+      cf->redissection_queued = RESCAN_SCAN;
+    } else if (cf->state != FILE_CLOSED) {
+      if (dftext == NULL) {
+        rescan_packets(cf, "Resetting", "Filter", FALSE);
+      } else {
+        rescan_packets(cf, "Filtering", dftext, FALSE);
+      }
     }
   }
 
@@ -1453,7 +1537,21 @@ cf_reftime_packets(capture_file *cf)
 void
 cf_redissect_packets(capture_file *cf)
 {
+  if (cf->read_lock || cf->redissection_queued == RESCAN_SCAN) {
+    /* Dissection in progress, signal redissection rather than rescanning. That
+     * would destroy the current (in-progress) dissection in "cf_read" which
+     * will cause issues when "cf_read" tries to add packets to the list.
+     * If a previous rescan was requested, "upgrade" it to a full redissection.
+     */
+    cf->redissection_queued = RESCAN_REDISSECT;
+  }
+  if (cf->redissection_queued != RESCAN_NONE) {
+    /* Redissection is (already) queued, wait for "cf_read" to finish. */
+    return;
+  }
+
   if (cf->state != FILE_CLOSED) {
+    /* Restart dissection in case no cf_read is pending. */
     rescan_packets(cf, "Reprocessing", "all packets", TRUE);
   }
 }
@@ -1513,6 +1611,12 @@ rescan_packets(capture_file *cf, const char *action, const char *action_item, gb
   gboolean    add_to_packet_list = FALSE;
   gboolean    compiled;
   guint32     frames_count;
+  gboolean    queued_rescan_type = RESCAN_NONE;
+
+  /* Rescan in progress, clear pending actions. */
+  cf->redissection_queued = RESCAN_NONE;
+  g_assert(!cf->read_lock);
+  cf->read_lock = TRUE;
 
   /* Compile the current display filter.
    * We assume this will not fail since cf->dfilter is only set in
@@ -1667,6 +1771,13 @@ rescan_packets(capture_file *cf, const char *action, const char *action_item, gb
       }
 
       g_timer_start(prog_timer);
+    }
+
+    queued_rescan_type = cf->redissection_queued;
+    if (queued_rescan_type != RESCAN_NONE) {
+      /* A redissection was requested while an existing redissection was
+       * pending. */
+      break;
     }
 
     if (cf->stop_flag) {
@@ -1835,6 +1946,17 @@ rescan_packets(capture_file *cf, const char *action, const char *action_item, gb
 
   /* Cleanup and release all dfilter resources */
   dfilter_free(dfcode);
+
+  /* It is safe again to execute redissections. */
+  g_assert(cf->read_lock);
+  cf->read_lock = FALSE;
+
+  /* If another rescan (due to dfilter change) or redissection (due to profile
+   * change) was requested, the rescan above is aborted and restarted here. */
+  if (queued_rescan_type != RESCAN_NONE) {
+    redissect = redissect || queued_rescan_type == RESCAN_REDISSECT;
+    rescan_packets(cf, "Reprocessing", "all packets", redissect);
+  }
 }
 
 
@@ -1957,6 +2079,12 @@ process_specified_records(capture_file *cf, packet_range_t *range,
   /* Progress so far. */
   progbar_val = 0.0f;
 
+  if (cf->read_lock) {
+    g_warning("Failing due to nested process_specified_records(\"%s\") call!", cf->filename);
+    return PSP_FAILED;
+  }
+  cf->read_lock = TRUE;
+
   cf->stop_flag = FALSE;
   g_get_current_time(&progbar_start_time);
 
@@ -2041,6 +2169,9 @@ process_specified_records(capture_file *cf, packet_range_t *range,
   if (progbar != NULL)
     destroy_progress_dlg(progbar);
   g_timer_destroy(prog_timer);
+
+  g_assert(cf->read_lock);
+  cf->read_lock = FALSE;
 
   wtap_rec_cleanup(&rec);
   ws_buffer_free(&buf);
@@ -2182,6 +2313,13 @@ print_packet(capture_file *cf, frame_data *fdata, wtap_rec *rec,
   if (args->print_formfeed) {
     if (!new_page(args->print_args->stream))
       goto fail;
+
+    /*
+     * Print another header line if we print a packet summary on the
+     * new page.
+     */
+    if (args->print_args->print_col_headings)
+        args->print_header_line = TRUE;
   } else {
       if (args->print_separator) {
         if (!print_line(args->print_args->stream, 0, ""))
@@ -4216,6 +4354,12 @@ cf_save_records(capture_file *cf, const char *fname, guint save_format,
   save_callback_args_t callback_args;
   gboolean needs_reload = FALSE;
 
+  /* XXX caller should avoid saving the file while a read is pending
+   * (e.g. by delaying the save action) */
+  if (cf->read_lock) {
+    g_warning("cf_save_records(\"%s\") while the file is being read, potential crash ahead", fname);
+  }
+
   cf_callback_invoke(cf_cb_file_save_started, (gpointer)fname);
 
   addr_lists = get_addrinfo_list();
@@ -4713,6 +4857,11 @@ cf_reload(capture_file *cf) {
   gchar    *filename;
   gboolean  is_tempfile;
   int       err;
+
+  if (cf->read_lock) {
+    g_warning("Failing cf_reload(\"%s\") since a read is in progress", cf->filename);
+    return;
+  }
 
   /* If the file could be opened, "cf_open()" calls "cf_close()"
      to get rid of state for the old capture file before filling in state

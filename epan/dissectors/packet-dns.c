@@ -617,6 +617,8 @@ typedef struct _dns_conv_info_t {
 #define O_PADDING       12              /* EDNS(0) Padding Option (RFC7830) */
 #define O_CHAIN         13              /* draft-ietf-dnsop-edns-chain-query */
 
+#define MIN_DNAME_LEN    2              /* minimum domain name length */
+
 static const true_false_string tfs_flags_response = {
   "Message is a response",
   "Message is a query"
@@ -1165,12 +1167,11 @@ expand_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
          * than the minimum length, we're looking at bad data and we're liable
          * to put the dissector into a loop.  Instead we throw an exception */
 
-  maxname=MAXDNAME;
+  maxname = MAX_DNAME_LEN;
   np=(guchar *)wmem_alloc(wmem_packet_scope(), maxname);
   *name=np;
   (*name_len) = 0;
 
-  maxname--;   /* reserve space for the trailing '\0' */
   for (;;) {
     if (max_len && offset - start_offset > max_len - 1) {
       break;
@@ -1191,6 +1192,9 @@ expand_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
             (*name_len)++;
             maxname--;
           }
+        }
+        else {
+          maxname--;
         }
         while (component_len > 0) {
           if (max_len && offset - start_offset > max_len - 1) {
@@ -1222,7 +1226,7 @@ expand_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
             label_len = (bit_count - 1) / 8 + 1;
 
             if (maxname > 0) {
-              print_len = g_snprintf(np, maxname + 1, "\\[x");
+              print_len = g_snprintf(np, maxname, "\\[x");
               if (print_len <= maxname) {
                 np      += print_len;
                 maxname -= print_len;
@@ -1234,7 +1238,7 @@ expand_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
             }
             while (label_len--) {
               if (maxname > 0) {
-                print_len = g_snprintf(np, maxname + 1, "%02x",
+                print_len = g_snprintf(np, maxname, "%02x",
                                        tvb_get_guint8(tvb, offset));
                 if (print_len <= maxname) {
                   np      += print_len;
@@ -1248,7 +1252,7 @@ expand_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
               offset++;
             }
             if (maxname > 0) {
-              print_len = g_snprintf(np, maxname + 1, "/%d]", bit_count);
+              print_len = g_snprintf(np, maxname, "/%d]", bit_count);
               if (print_len <= maxname) {
                 np      += print_len;
                 maxname -= print_len;
@@ -1295,7 +1299,7 @@ expand_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
          * If we find a pointer to itself, it is a trivial loop. Otherwise if we
          * processed a large number of pointers, assume an indirect loop.
          */
-        if (indir_offset == offset + 2 || pointers_count > MAXDNAME/4) {
+        if (indir_offset == offset + 2 || pointers_count > MAX_DNAME_LEN) {
           *name="<Name contains a pointer that loops>";
           *name_len = (guint)strlen(*name);
           if (len < min_len) {
@@ -1309,7 +1313,15 @@ expand_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
     }
   }
 
-  *np = '\0';
+  // Do we have space for the terminating 0?
+  if (maxname > 0) {
+    *np = '\0';
+  }
+  else {
+    *name="<Name too long>";
+    *name_len = (guint)strlen(*name);
+  }
+
   /* If "len" is negative, we haven't seen a pointer, and thus haven't
      set the length, so set it. */
   if (len < 0) {
@@ -1326,18 +1338,17 @@ get_dns_name(tvbuff_t *tvb, int offset, int max_len, int dns_data_offset,
     const guchar **name, guint* name_len)
 {
   int len;
-  const int min_len = 2;
 
   len = expand_dns_name(tvb, offset, max_len, dns_data_offset, name, name_len);
 
   /* Zero-length name means "root server" */
-  if (**name == '\0' && len <= min_len) {
+  if (**name == '\0' && len <= MIN_DNAME_LEN) {
     *name="<Root>";
     *name_len = (guint)strlen(*name);
     return len;
   }
 
-  if ((len < min_len) || (len > min_len && *name_len == 0)) {
+  if ((len < MIN_DNAME_LEN) || (len > MIN_DNAME_LEN && *name_len == 0)) {
     THROW(ReportedBoundsError);
   }
 
@@ -3676,7 +3687,7 @@ dissect_dns_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   gboolean           retransmission = FALSE;
   const guchar      *name;
   int                name_len;
-  nstime_t           delta = { 0, 0 };
+  nstime_t           delta = NSTIME_INIT_ZERO;
 
   dns_data_offset = offset;
 
