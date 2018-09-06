@@ -33,9 +33,11 @@ set(ASN1_SRC_DIRS
 	disp
 	dop
 	dsp
+	e1ap
 	ess
 	f1ap
 	ftam
+	glow
 	goose
 	gprscdr
 	gsm_map
@@ -71,6 +73,8 @@ set(ASN1_SRC_DIRS
 	mpeg-pes
 	mudurl
 	nbap
+	ngap
+	nist-csor
 	nr-rrc
 	ns_cert_exts
 	novell_pkis
@@ -120,6 +124,7 @@ set(ASN1_SRC_DIRS
 	x509ce
 	x509if
 	x509sat
+	xnap
 	${CUSTOM_ASN1_SRC_DIR}
 )
 

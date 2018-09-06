@@ -167,6 +167,8 @@ libwireshark.so.0 libwireshark0 #MINVER#
  conversation_pt_to_endpoint_type@Base 2.5.0
  conversation_set_dissector@Base 1.9.1
  conversation_set_dissector_from_frame_number@Base 2.0.0
+ conversation_set_port2@Base 2.6.3
+ conversation_set_addr2@Base 2.6.3
  conversation_table_get_num@Base 1.99.0
  conversation_table_iterate_tables@Base 1.99.0
  conversation_table_set_gui_info@Base 1.99.0
@@ -630,6 +632,7 @@ libwireshark.so.0 libwireshark0 #MINVER#
  find_heur_dissector_by_unique_short_name@Base 1.99.8
  find_heur_dissector_list@Base 1.99.2
  find_or_create_conversation@Base 1.9.1
+ find_or_create_conversation_by_id@Base 2.6.3
  find_protocol_by_id@Base 1.9.1
  find_sid_name@Base 1.9.1
  find_stream_circ@Base 1.9.1
@@ -1129,6 +1132,7 @@ libwireshark.so.0 libwireshark0 #MINVER#
  proto_register_protocol@Base 1.9.1
  proto_register_protocol_in_name_only@Base 2.3.0
  proto_register_subtree_array@Base 1.9.1
+ proto_registrar_dump_elastic@Base 2.9.0
  proto_registrar_dump_fieldcount@Base 2.0.0
  proto_registrar_dump_fields@Base 1.9.1
  proto_registrar_dump_ftypes@Base 1.9.1
@@ -1292,8 +1296,6 @@ libwireshark.so.0 libwireshark0 #MINVER#
  reassembly_table_init@Base 1.9.1
  reassembly_table_register@Base 2.3.0
  register_all_plugin_tap_listeners@Base 2.5.0
- register_all_protocol_handoffs@Base 1.9.1
- register_all_protocols@Base 1.9.1
  register_ber_oid_dissector@Base 2.1.0
  register_ber_oid_dissector_handle@Base 1.9.1
  register_ber_oid_syntax@Base 1.9.1
@@ -1303,7 +1305,6 @@ libwireshark.so.0 libwireshark0 #MINVER#
  register_cleanup_routine@Base 1.99.8
  register_conversation_filter@Base 2.0.0
  register_conversation_table@Base 2.5.0
- register_count@Base 1.9.1
  register_custom_dissector_table@Base 1.99.8
  register_custom_dissector_table@Base 1.99.8
  register_decode_as@Base 1.12.0~rc1
@@ -1426,6 +1427,7 @@ libwireshark.so.0 libwireshark0 #MINVER#
  set_mac_lte_proto_data@Base 1.9.1
  set_mac_nr_proto_data@Base 2.5.2
  set_postdissector_wanted_hfids@Base 2.3.0
+ set_resolution_synchrony@Base 2.9.0
  set_srt_table_param_data@Base 1.99.8
  set_tap_dfilter@Base 1.9.1
  show_exception@Base 1.9.1
@@ -1609,6 +1611,8 @@ libwireshark.so.0 libwireshark0 #MINVER#
  tree_expanded@Base 1.12.0~rc1
  tree_expanded_set@Base 1.12.0~rc1
  try_capture_dissector@Base 2.1.0
+ try_conversation_dissector@Base 2.6.3
+ try_conversation_dissector_by_id@Base 2.6.3
  try_bytesprefix_to_str@Base 2.3.0
  try_bytesval_to_str@Base 2.3.0
  try_enterprises_lookup@Base 2.5.0

@@ -27,6 +27,7 @@ set(WIRESHARK_WIDGET_HEADERS
 	widgets/export_objects_view.h
 	widgets/elided_label.h
 	widgets/field_filter_edit.h
+	widgets/filter_expression_toolbar.h
 	widgets/find_line_edit.h
 	widgets/follow_stream_text.h
 	widgets/interface_toolbar_lineedit.h
@@ -248,6 +249,7 @@ set(WIRESHARK_WIDGET_SRCS
 	widgets/expert_info_view.cpp
 	widgets/export_objects_view.cpp
 	widgets/field_filter_edit.cpp
+	widgets/filter_expression_toolbar.cpp
 	widgets/find_line_edit.cpp
 	widgets/follow_stream_text.cpp
 	widgets/interface_toolbar_lineedit.cpp
@@ -373,6 +375,7 @@ set(WIRESHARK_QT_SRC
 	lte_rlc_statistics_dialog.cpp
 	main_status_bar.cpp
 	welcome_page.cpp
+	main.cpp
 	main_window.cpp
 	main_window_preferences_frame.cpp
 	main_window_layout.cpp

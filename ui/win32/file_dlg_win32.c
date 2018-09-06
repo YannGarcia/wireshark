@@ -60,6 +60,18 @@ typedef enum {
     _T("C Arrays (packet bytes) (*.c)\0")                _T("*.c\0")     \
     _T("JSON (*.json)\0")                                _T("*.json\0")
 
+static TCHAR *FILE_EXT_EXPORT[] =
+{
+    _T(""), /* export type starts at 1 */
+    _T("txt"),
+    _T("ps"),
+    _T("csv"),
+    _T("psml"),
+    _T("pdml"),
+    _T("c"),
+    _T("json")
+};
+
 #define FILE_TYPES_RAW \
     _T("Raw data (*.bin, *.dat, *.raw)\0")               _T("*.bin;*.dat;*.raw\0") \
     _T("All Files (") _T(ALL_FILES_WILDCARD) _T(")\0")   _T(ALL_FILES_WILDCARD) _T("\0")
@@ -175,7 +187,7 @@ gboolean
 win32_open_file (HWND h_wnd, GString *file_name, unsigned int *type, GString *display_filter) {
     OPENFILENAME *ofn;
     TCHAR file_name16[MAX_PATH] = _T("");
-    int ofnsize;
+    int ofnsize = sizeof(OPENFILENAME);
     BOOL gofn_ok;
 
     if (!file_name || !display_filter)
@@ -191,7 +203,7 @@ win32_open_file (HWND h_wnd, GString *file_name, unsigned int *type, GString *di
         g_free(g_dfilter_str);
         g_dfilter_str = NULL;
     }
-    ofnsize = sizeof(OPENFILENAME);
+
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -332,7 +344,7 @@ win32_save_as_file(HWND h_wnd, capture_file *cf, GString *file_name, int *file_t
     GArray *savable_file_types;
     OPENFILENAME *ofn;
     TCHAR  file_name16[MAX_PATH] = _T("");
-    int    ofnsize;
+    int    ofnsize = sizeof(OPENFILENAME);
     BOOL gsfn_ok;
 
     if (!file_name || !file_type || !compressed)
@@ -355,7 +367,6 @@ win32_save_as_file(HWND h_wnd, capture_file *cf, GString *file_name, int *file_t
         return FALSE;  /* shouldn't happen - the "Save As..." item should be disabled if we can't save the file */
     g_compressed = FALSE;
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -411,11 +422,8 @@ gboolean win32_save_as_statstree(HWND h_wnd, GString *file_name, int *file_type)
 {
     OPENFILENAME *ofn;
     TCHAR  file_name16[MAX_PATH] = _T("");
-    int    ofnsize;
+    int    ofnsize = sizeof(OPENFILENAME);
     BOOL gsfn_ok;
-#if (_MSC_VER >= 1500)
-    OSVERSIONINFO osvi;
-#endif
 
     if (!file_name || !file_type)
         return FALSE;
@@ -424,20 +432,7 @@ gboolean win32_save_as_statstree(HWND h_wnd, GString *file_name, int *file_type)
         StringCchCopy(file_name16, MAX_PATH, utf_8to16(file_name->str));
     }
 
-    /* see OPENFILENAME comment in win32_open_file */
-#if (_MSC_VER >= 1500)
-    SecureZeroMemory(&osvi, sizeof(OSVERSIONINFO));
-    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-    GetVersionEx(&osvi);
-    if (osvi.dwMajorVersion >= 5) {
-        ofnsize = sizeof(OPENFILENAME);
-    } else {
-        ofnsize = OPENFILENAME_SIZE_VERSION_400;
-    }
-#else
-    ofnsize = sizeof(OPENFILENAME) + 12;
-#endif
-    ofn = g_malloc0(ofnsize);
+    ofn = g_malloc0(sizeof(OPENFILENAME));
 
     ofn->lStructSize = ofnsize;
     ofn->hwndOwner = h_wnd;
@@ -484,7 +479,7 @@ win32_export_specified_packets_file(HWND h_wnd, capture_file *cf,
     GArray *savable_file_types;
     OPENFILENAME *ofn;
     TCHAR  file_name16[MAX_PATH] = _T("");
-    int    ofnsize;
+    int    ofnsize = sizeof(OPENFILENAME);
     BOOL gsfn_ok;
 
     if (!file_name || !file_type || !compressed || !range)
@@ -503,7 +498,6 @@ win32_export_specified_packets_file(HWND h_wnd, capture_file *cf,
     g_cf = cf;
     g_compressed = FALSE;
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -562,7 +556,7 @@ gboolean
 win32_merge_file (HWND h_wnd, GString *file_name, GString *display_filter, int *merge_type) {
     OPENFILENAME *ofn;
     TCHAR         file_name16[MAX_PATH] = _T("");
-    int           ofnsize;
+    int           ofnsize = sizeof(OPENFILENAME);
     BOOL          gofn_ok;
 
     if (!file_name || !display_filter || !merge_type)
@@ -579,7 +573,6 @@ win32_merge_file (HWND h_wnd, GString *file_name, GString *display_filter, int *
         g_dfilter_str = NULL;
     }
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -642,11 +635,10 @@ win32_export_file(HWND h_wnd, capture_file *cf, export_type_e export_type) {
     TCHAR             file_name[MAX_PATH] = _T("");
     char             *dirname;
     cf_print_status_t status;
-    int               ofnsize;
+    int               ofnsize = sizeof(OPENFILENAME);
 
     g_cf = cf;
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -665,7 +657,7 @@ win32_export_file(HWND h_wnd, capture_file *cf, export_type_e export_type) {
     ofn->Flags = OFN_ENABLESIZING  | OFN_ENABLETEMPLATE  | OFN_EXPLORER     |
                  OFN_NOCHANGEDIR   | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY |
                  OFN_PATHMUSTEXIST | OFN_ENABLEHOOK      | OFN_SHOWHELP;
-    ofn->lpstrDefExt = NULL;
+    ofn->lpstrDefExt = FILE_EXT_EXPORT[export_type];
     ofn->lCustData = (LPARAM) cf;
     ofn->lpfnHook = export_file_hook_proc;
     ofn->lpTemplateName = _T("WIRESHARK_EXPORTFILENAME_TEMPLATE");
@@ -754,7 +746,7 @@ win32_export_raw_file(HWND h_wnd, capture_file *cf) {
     const guint8 *data_p;
     char         *file_name8;
     int           fd;
-    int           ofnsize;
+    int           ofnsize = sizeof(OPENFILENAME);
 
     if (!cf->finfo_selected) {
         /* This shouldn't happen */
@@ -762,7 +754,6 @@ win32_export_raw_file(HWND h_wnd, capture_file *cf) {
         return;
     }
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -831,7 +822,7 @@ win32_export_sslkeys_file(HWND h_wnd) {
     gchar        *keylist = NULL;
     char         *file_name8;
     int           fd;
-    int           ofnsize;
+    int           ofnsize = sizeof(OPENFILENAME);
     int           keylist_size;
 
     keylist_size = ssl_session_key_count();
@@ -841,7 +832,6 @@ win32_export_sslkeys_file(HWND h_wnd) {
         return;
     }
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -909,10 +899,9 @@ win32_export_color_file(HWND h_wnd, capture_file *cf, gpointer filter_list) {
     OPENFILENAME *ofn;
     TCHAR  file_name[MAX_PATH] = _T("");
     gchar *dirname;
-    int    ofnsize;
+    int    ofnsize = sizeof(OPENFILENAME);
     gchar *err_msg = NULL;
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;
@@ -964,10 +953,9 @@ win32_import_color_file(HWND h_wnd, gpointer color_filters) {
     OPENFILENAME *ofn;
     TCHAR  file_name[MAX_PATH] = _T("");
     gchar *dirname;
-    int    ofnsize;
+    int    ofnsize = sizeof(OPENFILENAME);
     gchar *err_msg = NULL;
 
-    ofnsize = sizeof(OPENFILENAME);
     ofn = g_malloc0(ofnsize);
 
     ofn->lStructSize = ofnsize;

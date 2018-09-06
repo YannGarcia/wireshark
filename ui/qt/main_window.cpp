@@ -67,7 +67,7 @@ DIAG_ON(frame-larger-than=)
 
 #include <ui/qt/widgets/additional_toolbar.h>
 #include <ui/qt/widgets/display_filter_edit.h>
-#include <ui/qt/widgets/drag_drop_toolbar.h>
+#include <ui/qt/widgets/filter_expression_toolbar.h>
 
 #include <ui/qt/utils/color_utils.h>
 #include <ui/qt/utils/qt_ui_utils.h>
@@ -270,7 +270,7 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     main_ui_(new Ui::MainWindow),
     cur_layout_(QVector<unsigned>()),
-    df_combo_box_(NULL),
+    df_combo_box_(new DisplayFilterCombo),
     packet_list_(NULL),
     proto_tree_(NULL),
     previous_focus_(NULL),
@@ -364,12 +364,6 @@ MainWindow::MainWindow(QWidget *parent) :
         Qt::BlockingQueuedConnection);
 #endif
 
-    // We set the minimum width of df_combo_box_ in resizeEvent so that it won't shrink
-    // down too much if we have a lot of filter buttons. Unfortunately that can break
-    // Aero snapping if our window is large or maximized. Set a minimum width here in
-    // order to counteract that.
-    setMinimumWidth(350); // Arbitrary
-    df_combo_box_ = new DisplayFilterCombo();
     const DisplayFilterEdit *df_edit = qobject_cast<DisplayFilterEdit *>(df_combo_box_->lineEdit());
     connect(df_edit, SIGNAL(pushFilterSyntaxStatus(const QString&)),
             main_ui_->statusBar, SLOT(pushFilterStatus(const QString&)));
@@ -400,28 +394,10 @@ MainWindow::MainWindow(QWidget *parent) :
     // Make sure filter expressions overflow into a menu instead of a
     // larger toolbar. We do this by adding them to a child toolbar.
     // https://bugreports.qt.io/browse/QTBUG-2472
-    filter_expression_toolbar_ = new DragDropToolBar();
-    // Try to draw 1-pixel-wide separator lines from the button label
-    // ascent to its baseline.
-    int sep_margin = (filter_expression_toolbar_->fontMetrics().height() * 0.5) - 1;
-    QColor sep_color = ColorUtils::alphaBlend(filter_expression_toolbar_->palette().text(),
-                                              filter_expression_toolbar_->palette().base(), 0.3);
-    filter_expression_toolbar_->setStyleSheet(QString(
-                "QToolBar { background: none; border: none; spacing: 1px; }"
-                "QFrame {"
-                "  min-width: 1px; max-width: 1px;"
-                "  margin: %1px 0 %2px 0; padding: 0;"
-                "  background-color: %3;"
-                "}"
-                ).arg(sep_margin).arg(sep_margin - 1).arg(sep_color.name()));
-
-    filter_expression_toolbar_->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(filter_expression_toolbar_, SIGNAL(customContextMenuRequested(QPoint)),
-            this, SLOT(filterToolbarCustomMenuHandler(QPoint)));
-    connect(filter_expression_toolbar_, SIGNAL(actionMoved(QAction*, int, int)),
-            this, SLOT(filterToolbarActionMoved(QAction*, int, int)));
-    connect(filter_expression_toolbar_, SIGNAL(newFilterDropped(QString, QString)),
-            this, SLOT(filterDropped(QString, QString)));
+    filter_expression_toolbar_ = new FilterExpressionToolBar(this);
+    connect(filter_expression_toolbar_, &FilterExpressionToolBar::filterPreferences, this, &MainWindow::onFilterPreferences);
+    connect(filter_expression_toolbar_, &FilterExpressionToolBar::filterSelected, this, &MainWindow::onFilterSelected);
+    connect(filter_expression_toolbar_, &FilterExpressionToolBar::filterEdit, this, &MainWindow::onFilterEdit);
 
     main_ui_->displayFilterToolBar->addWidget(filter_expression_toolbar_);
 
@@ -527,7 +503,7 @@ MainWindow::MainWindow(QWidget *parent) :
             main_ui_->statusBar, SLOT(highlightedFieldChanged(FieldInformation *)));
     connect(wsApp, SIGNAL(captureActive(int)), this, SIGNAL(captureActive(int)));
 
-    createByteViewDialog();
+    byte_view_tab_ = new ByteViewTab(&master_split_);
 
     // Packet list and proto tree must exist before these are called.
     setMenusForSelectedPacket();
@@ -561,10 +537,7 @@ MainWindow::MainWindow(QWidget *parent) :
             this, SLOT(updateRecentActions()));
     connect(wsApp, SIGNAL(packetDissectionChanged()),
             this, SLOT(redissectPackets()), Qt::QueuedConnection);
-    connect(wsApp, SIGNAL(appInitialized()),
-            this, SLOT(filterExpressionsChanged()));
-    connect(wsApp, SIGNAL(filterExpressionsChanged()),
-            this, SLOT(filterExpressionsChanged()));
+
     connect(wsApp, SIGNAL(checkDisplayFilter()),
             this, SLOT(checkDisplayFilter()));
     connect(wsApp, SIGNAL(fieldsChanged()),
@@ -595,7 +568,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(main_ui_->filterExpressionFrame, SIGNAL(showPreferencesDialog(QString)),
             this, SLOT(showPreferencesDialog(QString)));
     connect(main_ui_->filterExpressionFrame, SIGNAL(filterExpressionsChanged()),
-            this, SLOT(filterExpressionsChanged()));
+            filter_expression_toolbar_, SLOT(filterExpressionsChanged()));
 
     /* Connect change of capture file */
     connect(this, SIGNAL(setCaptureFile(capture_file*)),
@@ -708,6 +681,12 @@ MainWindow::MainWindow(QWidget *parent) :
 
     /* Register Interface Toolbar callbacks */
     iface_toolbar_register_cb(mainwindow_add_toolbar, mainwindow_remove_toolbar);
+
+    // We set the minimum width of df_combo_box_ in resizeEvent so that it won't shrink
+    // down too much if we have a lot of filter buttons. Unfortunately that can break
+    // Aero snapping if our window is large or maximized. Set a minimum width here in
+    // order to counteract that.
+    setMinimumWidth(350); // Arbitrary
 
     showWelcome();
 }
@@ -958,7 +937,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     }
     wsApp->quit();
     // When the main loop is not yet running (i.e. when openCaptureFile is
-    // executing in wireshark-qt.cpp), the above quit action has no effect.
+    // executing in main.cpp), the above quit action has no effect.
     // Schedule a quit action for the next execution of the main loop.
     QMetaObject::invokeMethod(wsApp, "quit", Qt::QueuedConnection);
 }
@@ -1704,6 +1683,17 @@ bool MainWindow::testCaptureFileClose(QString before_what, FileCloseContext cont
     if (!capture_file_.capFile() || capture_file_.capFile()->state == FILE_CLOSED)
         return true; /* Already closed, nothing to do */
 
+    if (capture_file_.capFile()->read_lock) {
+        /*
+         * If the file is being redissected, we cannot stop the capture since
+         * that would crash and burn "cf_read", so stop early. Ideally all
+         * callers should be modified to check this condition and act
+         * accordingly (ignore action or queue it up), so print a warning.
+         */
+        g_warning("Refusing to close \"%s\" which is being read.", capture_file_.capFile()->filename);
+        return false;
+    }
+
 #ifdef HAVE_LIBPCAP
     if (capture_file_.capFile()->state == FILE_READ_IN_PROGRESS) {
         /*
@@ -1881,6 +1871,7 @@ bool MainWindow::testCaptureFileClose(QString before_what, FileCloseContext cont
              * We cannot just invoke cf_close here since cf_read is up in the
              * call chain. (update_progress_dlg can end up processing the Quit
              * event from the user which then ends up here.)
+             * See also the above "read_lock" check.
              */
             capture_file_.capFile()->state = FILE_READ_ABORTED;
             return true;
@@ -2155,43 +2146,18 @@ void MainWindow::initExportObjectsMenus()
 void MainWindow::setTitlebarForCaptureFile()
 {
     if (capture_file_.capFile() && capture_file_.capFile()->filename) {
-        if (capture_file_.capFile()->is_tempfile) {
+        setWSWindowTitle(QString("[*]%1").arg(capture_file_.fileDisplayName()));
+        //
+        // XXX - on non-Mac platforms, put in the application
+        // name?  Or do so only for temporary files?
+        //
+        if (!capture_file_.capFile()->is_tempfile) {
             //
-            // For a temporary file, put the source of the data
-            // in the window title, not whatever random pile
-            // of characters is the last component of the path
-            // name.
+            // Set the file path; that way, for macOS, it'll set the
+            // "proxy icon".
             //
-            // XXX - on non-Mac platforms, put in the application
-            // name?
-            //
-            setWSWindowTitle(QString("[*]%1").arg(cf_get_tempfile_source(capture_file_.capFile())));
-        } else {
-            //
-            // For a user file, set the full path; that way,
-            // for macOS, it'll set the "proxy icon".  Qt
-            // handles extracting the last component.
-            //
-            // Sadly, some UN*Xes don't necessarily use UTF-8
-            // for their file names, so we have to map the
-            // file path to UTF-8.  If that fails, we're somewhat
-            // stuck.
-            //
-            char *utf8_filename = g_filename_to_utf8(capture_file_.capFile()->filename,
-                                                     -1,
-                                                     NULL,
-                                                     NULL,
-                                                     NULL);
-            if (utf8_filename) {
-                QFileInfo fi(utf8_filename);
-                setWSWindowTitle(QString("[*]%1").arg(fi.fileName()));
-                setWindowFilePath(utf8_filename);
-                g_free(utf8_filename);
-            } else {
-                // So what the heck else can we do here?
-                setWSWindowTitle(tr("(File name can't be mapped to UTF-8)"));
-            }
-        }
+            setWindowFilePath(capture_file_.filePath());
+	}
         setWindowModified(cf_has_unsaved_data(capture_file_.capFile()));
     } else {
         /* We have no capture file. */
@@ -2820,11 +2786,6 @@ void MainWindow::setMwFileName(QString fileName)
 {
     mwFileName_ = fileName;
     return;
-}
-
-void MainWindow::createByteViewDialog()
-{
-    byte_view_tab_ = new ByteViewTab(&master_split_);
 }
 
 /*

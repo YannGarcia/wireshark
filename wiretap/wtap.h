@@ -281,6 +281,9 @@ extern "C" {
 #define WTAP_ENCAP_ETHERNET_MPACKET             198
 #define WTAP_ENCAP_DOCSIS31_XRA31               199
 #define WTAP_ENCAP_DPAUXMON                     200
+#define WTAP_ENCAP_RUBY_MARSHAL                 201
+#define WTAP_ENCAP_RFC7468                      202
+#define WTAP_ENCAP_SYSTEMD_JOURNAL              203
 
 /* After adding new item here, please also add new item to encap_table_base array */
 
@@ -373,7 +376,9 @@ extern "C" {
 #define WTAP_FILE_TYPE_SUBTYPE_NETTRACE_3GPP_32_423          79
 #define WTAP_FILE_TYPE_SUBTYPE_MPLOG                         80
 #define WTAP_FILE_TYPE_SUBTYPE_DPA400                        81
-#define WTAP_FILE_TYPE_SUBTYPE_PEM                           82
+#define WTAP_FILE_TYPE_SUBTYPE_RFC7468                       82
+#define WTAP_FILE_TYPE_SUBTYPE_RUBY_MARSHAL                  83
+#define WTAP_FILE_TYPE_SUBTYPE_SYSTEMD_JOURNAL               84
 
 #define WTAP_NUM_FILE_TYPES_SUBTYPES  wtap_get_num_file_types_subtypes()
 
@@ -794,10 +799,10 @@ union ieee_802_11_phy_info {
 };
 
 struct ieee_802_11_phdr {
-    gint     fcs_len;        /* Number of bytes of FCS - -1 means "unknown" */
-    gboolean decrypted;      /* TRUE if frame is decrypted even if "protected" bit is set */
-    gboolean datapad;        /* TRUE if frame has padding between 802.11 header and payload */
-    guint    phy;            /* PHY type */
+    gint     fcs_len;          /* Number of bytes of FCS - -1 means "unknown" */
+    gboolean decrypted;        /* TRUE if frame is decrypted even if "protected" bit is set */
+    gboolean datapad;          /* TRUE if frame has padding between 802.11 header and payload */
+    guint    phy;              /* PHY type */
     union ieee_802_11_phy_info phy_info;
 
     /* Which of this information is present? */
@@ -809,18 +814,20 @@ struct ieee_802_11_phdr {
     guint    has_signal_dbm:1;
     guint    has_noise_dbm:1;
     guint    has_tsf_timestamp:1;
-    guint    has_aggregate_info:1;    /* aggregate flags and ID */
+    guint    has_aggregate_info:1;        /* aggregate flags and ID */
+    guint    has_zero_length_psdu_type:1; /* zero-length PSDU type */
 
-    guint16  channel;        /* Channel number */
-    guint32  frequency;      /* Channel center frequency */
-    guint16  data_rate;      /* Data rate, in .5 Mb/s units */
-    guint8   signal_percent; /* Signal level, as a percentage */
-    guint8   noise_percent;  /* Noise level, as a percentage */
-    gint8    signal_dbm;     /* Signal level, in dBm */
-    gint8    noise_dbm;      /* Noise level, in dBm */
+    guint16  channel;                     /* Channel number */
+    guint32  frequency;                   /* Channel center frequency */
+    guint16  data_rate;                   /* Data rate, in .5 Mb/s units */
+    guint8   signal_percent;              /* Signal level, as a percentage */
+    guint8   noise_percent;               /* Noise level, as a percentage */
+    gint8    signal_dbm;                  /* Signal level, in dBm */
+    gint8    noise_dbm;                   /* Noise level, in dBm */
     guint64  tsf_timestamp;
-    guint32  aggregate_flags; /* A-MPDU flags */
-    guint32  aggregate_id;    /* ID for A-MPDU reassembly */
+    guint32  aggregate_flags;             /* A-MPDU flags */
+    guint32  aggregate_id;                /* ID for A-MPDU reassembly */
+    guint8   zero_length_psdu_type;       /* type of zero-length PSDU */
 };
 
 /*
@@ -828,6 +835,13 @@ struct ieee_802_11_phdr {
  */
 #define PHDR_802_11_LAST_PART_OF_A_MPDU    0x00000001 /* this is the last part of an A-MPDU */
 #define PHDR_802_11_A_MPDU_DELIM_CRC_ERROR 0x00000002 /* delimiter CRC error after this part */
+
+/*
+ * Zero-length PSDU types.
+ */
+#define PHDR_802_11_SOUNDING_PSDU                 0 /* sounding PPDU */
+#define PHDR_802_11_DATA_NOT_CAPTURED             1 /* data not captured, (e.g. multi-user PPDU) */
+#define PHDR_802_11_0_LENGTH_PSDU_VENDOR_SPECIFIC 0xff
 
 /* Packet "pseudo-header" for the output from CoSine L2 debug output. */
 
@@ -1110,7 +1124,7 @@ struct nstr_phdr {
     guint8 nicno_len;
     guint8 dir_offset;
     guint8 dir_len;
-    guint8 eth_offset;
+    guint16 eth_offset;
     guint8 pcb_offset;
     guint8 l_pcb_offset;
     guint8 rec_type;
@@ -1145,10 +1159,9 @@ struct logcat_phdr {
 /* Packet "pseudo-header" information for header data from NetMon files. */
 
 struct netmon_phdr {
-    guint32 titleLength;    /* Number of bytes in the comment title */
-    guint8* title;          /* Comment title */
+    guint8* title;          /* Comment title, as a null-terminated UTF-8 string */
     guint32 descLength;     /* Number of bytes in the comment description */
-    guint8* description;    /* Comment description */
+    guint8* description;    /* Comment description, in ASCII RTF */
     guint sub_encap;        /* "Real" encap value for the record that will be used once pseudo header data is display */
     union sub_wtap_pseudo_header {
         struct eth_phdr     eth;
@@ -2002,6 +2015,8 @@ WS_DLL_PUBLIC
 const char *wtap_default_file_extension(int filetype);
 WS_DLL_PUBLIC
 GSList *wtap_get_file_extensions_list(int filetype, gboolean include_compressed);
+WS_DLL_PUBLIC
+GSList *wtap_get_all_file_extensions_list(void);
 WS_DLL_PUBLIC
 void wtap_free_extensions_list(GSList *extensions);
 

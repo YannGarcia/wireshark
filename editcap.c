@@ -46,6 +46,7 @@
 #include <wiretap/wtap.h>
 
 #include "epan/etypes.h"
+#include "epan/dissectors/packet-ieee80211-radiotap-defs.h"
 
 #ifndef HAVE_GETOPT_LONG
 #include "wsutil/wsgetopt.h"
@@ -159,19 +160,20 @@ static int                    out_file_type_subtype     = WTAP_FILE_TYPE_SUBTYPE
 #endif
 static int                    out_frame_type            = -2; /* Leave frame type alone */
 static int                    verbose                   = 0;  /* Not so verbose         */
-static struct time_adjustment time_adj                  = {{0, 0}, 0}; /* no adjustment */
-static nstime_t               relative_time_window      = {0, 0}; /* de-dup time window */
-static double                 err_prob                  = 0.0;
+static struct time_adjustment time_adj                  = {NSTIME_INIT_ZERO, 0}; /* no adjustment */
+static nstime_t               relative_time_window      = NSTIME_INIT_ZERO; /* de-dup time window */
+static double                 err_prob                  = -1.0;
 static time_t                 starttime                 = 0;
 static time_t                 stoptime                  = 0;
 static gboolean               check_startstop           = FALSE;
 static gboolean               rem_vlan                  = FALSE;
 static gboolean               dup_detect                = FALSE;
 static gboolean               dup_detect_by_time        = FALSE;
+static gboolean               skip_radiotap             = FALSE;
 
 static int                    do_strict_time_adjustment = FALSE;
-static struct time_adjustment strict_time_adj           = {{0, 0}, 0}; /* strict time adjustment */
-static nstime_t               previous_time             = {0, 0}; /* previous time */
+static struct time_adjustment strict_time_adj           = {NSTIME_INIT_ZERO, 0}; /* strict time adjustment */
+static nstime_t               previous_time             = NSTIME_INIT_ZERO; /* previous time */
 
 static int find_dct2000_real_data(guint8 *buf);
 static void handle_chopping(chop_t chop, wtap_packet_header *out_phdr,
@@ -382,7 +384,7 @@ set_time_adjustment(char *optarg_str_p)
             val = strtol(&(frac[1]), &end, 10);
         }
         if (*frac != '.' || end == NULL || end == frac || val < 0
-            || val > ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
+            || val >= ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
             fprintf(stderr, "editcap: \"%s\" isn't a valid time adjustment\n",
                     optarg_str_p);
             return FALSE;
@@ -456,7 +458,7 @@ set_strict_time_adj(char *optarg_str_p)
             val = strtol(&(frac[1]), &end, 10);
         }
         if (*frac != '.' || end == NULL || end == frac || val < 0
-            || val > ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
+            || val >= ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
             fprintf(stderr, "editcap: \"%s\" isn't a valid time adjustment\n",
                     optarg_str_p);
             return FALSE;
@@ -524,7 +526,7 @@ set_rel_time(char *optarg_str_p)
             val = strtol(&(frac[1]), &end, 10);
         }
         if (*frac != '.' || end == NULL || end == frac || val < 0
-            || val > ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
+            || val >= ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
             fprintf(stderr, "3: editcap: \"%s\" isn't a valid rel time value\n",
                     optarg_str_p);
             return FALSE;
@@ -576,6 +578,7 @@ remove_vlan_info(const wtap_packet_header *phdr, guint8* fd, guint32* len) {
 static gboolean
 is_duplicate(guint8* fd, guint32 len) {
     int i;
+    const struct ieee80211_radiotap_header* tap_header;
 
     /*Hint to ignore some bytes at the start of the frame for the digest calculation(-I option) */
     guint32 offset = ignored_bytes;
@@ -584,6 +587,14 @@ is_duplicate(guint8* fd, guint32 len) {
 
     if (len <= ignored_bytes) {
         offset = 0;
+    }
+
+    /* Get the size of radiotap header and use that as offset (-p option) */
+    if (skip_radiotap == TRUE) {
+        tap_header = (const struct ieee80211_radiotap_header*)fd;
+        offset = pletoh16(&tap_header->it_len);
+        if (offset >= len)
+            offset = 0;
     }
 
     new_fd  = &fd[offset];
@@ -752,21 +763,13 @@ print_usage(FILE *output)
     fprintf(output, "                         LESS THAN <dup time window> prior to current packet.\n");
     fprintf(output, "                         A <dup time window> is specified in relative seconds\n");
     fprintf(output, "                         (e.g. 0.000001).\n");
-    fprintf(output, "  -a <framenum>:<comment> Add or replace comment for given frame number\n");
-    fprintf(output, "\n");
-    fprintf(output, "  -I <bytes to ignore>   ignore the specified number of bytes at the beginning\n");
-    fprintf(output, "                         of the frame during MD5 hash calculation, unless the\n");
-    fprintf(output, "                         frame is too short, then the full frame is used.\n");
-    fprintf(output, "                         Useful to remove duplicated packets taken on\n");
-    fprintf(output, "                         several routers (different mac addresses for\n");
-    fprintf(output, "                         example).\n");
-    fprintf(output, "                         e.g. -I 26 in case of Ether/IP will ignore\n");
-    fprintf(output, "                         ether(14) and IP header(20 - 4(src ip) - 4(dst ip)).\n");
-    fprintf(output, "\n");
     fprintf(output, "           NOTE: The use of the 'Duplicate packet removal' options with\n");
     fprintf(output, "           other editcap options except -v may not always work as expected.\n");
     fprintf(output, "           Specifically the -r, -t or -S options will very likely NOT have the\n");
     fprintf(output, "           desired effect if combined with the -d, -D or -w.\n");
+    fprintf(output, "  --skip-radiotap-header skip radiotap header when checking for packet duplicates.\n");
+    fprintf(output, "                         Useful when processing packets captured by multiple radios\n");
+    fprintf(output, "                         on the same channel in the vicinity of each other.\n");
     fprintf(output, "\n");
     fprintf(output, "Packet manipulation:\n");
     fprintf(output, "  -s <snaplen>           truncate each packet to max. <snaplen> bytes of data.\n");
@@ -796,6 +799,18 @@ print_usage(FILE *output)
     fprintf(output, "  -o <change offset>     When used in conjunction with -E, skip some bytes from the\n");
     fprintf(output, "                         beginning of the packet. This allows one to preserve some\n");
     fprintf(output, "                         bytes, in order to have some headers untouched.\n");
+    fprintf(output, "  --seed <seed>          When used in conjunction with -E, set the seed to use for\n");
+    fprintf(output, "                         the pseudo-random number generator. This allows one to\n");
+    fprintf(output, "                         repeat a particular sequence of errors.\n");
+    fprintf(output, "  -I <bytes to ignore>   ignore the specified number of bytes at the beginning\n");
+    fprintf(output, "                         of the frame during MD5 hash calculation, unless the\n");
+    fprintf(output, "                         frame is too short, then the full frame is used.\n");
+    fprintf(output, "                         Useful to remove duplicated packets taken on\n");
+    fprintf(output, "                         several routers (different mac addresses for\n");
+    fprintf(output, "                         example).\n");
+    fprintf(output, "                         e.g. -I 26 in case of Ether/IP will ignore\n");
+    fprintf(output, "                         ether(14) and IP header(20 - 4(src ip) - 4(dst ip)).\n");
+    fprintf(output, "  -a <framenum>:<comment> Add or replace comment for given frame number\n");
     fprintf(output, "\n");
     fprintf(output, "Output File(s):\n");
     fprintf(output, "  -c <packets per file>  split the packet output to different files based on\n");
@@ -952,6 +967,8 @@ main(int argc, char *argv[])
     int           opt;
     static const struct option long_options[] = {
         {"novlan", no_argument, NULL, 0x8100},
+        {"skip-radiotap-header", no_argument, NULL, 0x8101},
+        {"seed", required_argument, NULL, 0x8102},
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'V'},
         {0, 0, 0, 0 }
@@ -988,6 +1005,8 @@ main(int argc, char *argv[])
     gboolean                     do_mutation;
     guint32                      caplen;
     int                          ret = EXIT_SUCCESS;
+    gboolean                     valid_seed = FALSE;
+    unsigned int                 seed = 0;
 
     cmdarg_err_init(failure_warning_message, failure_message_cont);
 
@@ -1040,6 +1059,24 @@ main(int argc, char *argv[])
         case 0x8100:
         {
             rem_vlan = TRUE;
+            break;
+        }
+
+        case 0x8101:
+        {
+            skip_radiotap = TRUE;
+            break;
+        }
+
+        case 0x8102:
+        {
+            if (sscanf(optarg, "%u", &seed) != 1) {
+                fprintf(stderr, "editcap: \"%s\" isn't a valid seed\n\n",
+                        optarg);
+                ret = INVALID_OPTION;
+                goto clean_exit;
+            }
+            valid_seed = TRUE;
             break;
         }
 
@@ -1170,7 +1207,6 @@ main(int argc, char *argv[])
                 ret = INVALID_OPTION;
                 goto clean_exit;
             }
-            srand( (unsigned int) (time(NULL) + ws_getpid()) );
             break;
 
         case 'F':
@@ -1298,6 +1334,17 @@ main(int argc, char *argv[])
         print_usage(stderr);
         ret = INVALID_OPTION;
         goto clean_exit;
+
+    }
+
+    if (err_prob >= 0.0) {
+        if (!valid_seed) {
+            seed = (unsigned int) (time(NULL) + ws_getpid());
+        }
+        if (verbose) {
+            fprintf(stderr, "Using seed %u\n", seed);
+        }
+        srand(seed);
     }
 
     if (check_startstop && !stoptime) {
@@ -1340,6 +1387,22 @@ main(int argc, char *argv[])
     if (verbose) {
         fprintf(stderr, "File %s is a %s capture file.\n", argv[optind],
                 wtap_file_type_subtype_string(wtap_file_type_subtype(wth)));
+    }
+
+    if (ignored_bytes != 0 && skip_radiotap == TRUE) {
+        fprintf(stderr, "editcap: can't skip radiotap headers and %d byte(s)\n", ignored_bytes);
+        fprintf(stderr, "editcap: at the start of packet at the same time\n");
+        ret = INVALID_OPTION;
+        goto clean_exit;
+    }
+
+    if (skip_radiotap == TRUE && wtap_file_encap(wth) != WTAP_ENCAP_IEEE_802_11_RADIOTAP) {
+        fprintf(stderr, "editcap: can't skip radiotap header because input file is incorrect\n");
+        fprintf(stderr, "editcap: expected '%s', input is '%s'\n",
+                wtap_encap_string(WTAP_ENCAP_IEEE_802_11_RADIOTAP),
+                wtap_encap_string(wtap_file_type_subtype(wth)));
+        ret = INVALID_OPTION;
+        goto clean_exit;
     }
 
     shb_hdrs = wtap_file_get_shb_for_new_file(wth);
@@ -1539,7 +1602,7 @@ main(int argc, char *argv[])
                                     temp_rec = *rec;
                                     temp_rec.ts.secs = previous_time.secs + strict_time_adj.tv.secs;
                                     temp_rec.ts.nsecs = previous_time.nsecs;
-                                    if (temp_rec.ts.nsecs + strict_time_adj.tv.nsecs > ONE_BILLION) {
+                                    if (temp_rec.ts.nsecs + strict_time_adj.tv.nsecs >= ONE_BILLION) {
                                         /* carry */
                                         temp_rec.ts.secs++;
                                         temp_rec.ts.nsecs += strict_time_adj.tv.nsecs - ONE_BILLION;
@@ -1559,7 +1622,7 @@ main(int argc, char *argv[])
                                 temp_rec = *rec;
                                 temp_rec.ts.secs = previous_time.secs + strict_time_adj.tv.secs;
                                 temp_rec.ts.nsecs = previous_time.nsecs;
-                                if (temp_rec.ts.nsecs + strict_time_adj.tv.nsecs > ONE_BILLION) {
+                                if (temp_rec.ts.nsecs + strict_time_adj.tv.nsecs >= ONE_BILLION) {
                                     /* carry */
                                     temp_rec.ts.secs++;
                                     temp_rec.ts.nsecs += strict_time_adj.tv.nsecs - ONE_BILLION;
@@ -1592,7 +1655,7 @@ main(int argc, char *argv[])
                             }
                             temp_rec.ts.nsecs -= time_adj.tv.nsecs;
                         } else {                  /* add */
-                            if (temp_rec.ts.nsecs + time_adj.tv.nsecs > ONE_BILLION) {
+                            if (temp_rec.ts.nsecs + time_adj.tv.nsecs >= ONE_BILLION) {
                                 /* carry */
                                 temp_rec.ts.secs++;
                                 temp_rec.ts.nsecs += time_adj.tv.nsecs - ONE_BILLION;

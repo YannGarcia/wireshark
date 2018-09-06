@@ -68,11 +68,13 @@ set(WIRETAP_NONGENERATED_FILES
 	pcapng.c
 	peekclassic.c
 	peektagged.c
-	pem.c
+	rfc7468.c
 	pppdump.c
 	radcom.c
+	ruby_marshal.c
 	snoop.c
 	stanag4607.c
+	systemd_journal.c
 	tnef.c
 	toshiba.c
 	visual.c
@@ -117,20 +119,25 @@ add_library(wiretap
 
 add_dependencies(wiretap version)
 
-set(FULL_SO_VERSION "0.0.0")
-
 set_target_properties(wiretap PROPERTIES
 	PREFIX "lib"
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
 	LINK_FLAGS "${WS_LINK_FLAGS}"
-	VERSION ${FULL_SO_VERSION} SOVERSION 0
+	VERSION "0.0.0" SOVERSION 0
 	FOLDER "DLLs"
 )
 
 if(ENABLE_APPLICATION_BUNDLE)
-	set_target_properties(wiretap PROPERTIES
-		LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
-	)
+	if(NOT CMAKE_CFG_INTDIR STREQUAL ".")
+		# Xcode
+		set_target_properties(wiretap PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/$<CONFIG>/Wireshark.app/Contents/Frameworks
+		)
+	else()
+		set_target_properties(wiretap PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
+		)
+	endif()
 endif()
 
 ABICHECK(libwiretap)
@@ -148,6 +155,7 @@ add_custom_command(OUTPUT libwiretap.abi.tar.gz
 target_link_libraries(wiretap ${wiretap_LIBS})
 
 install(TARGETS wiretap
+	EXPORT WiresharkTargets
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

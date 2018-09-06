@@ -9,6 +9,7 @@
 #
 '''Configuration'''
 
+import logging
 import os
 import os.path
 import re
@@ -22,6 +23,7 @@ commands = (
     'dumpcap',
     'mergecap',
     'rawshark',
+    'sharkd',
     'text2pcap',
     'tshark',
     'wireshark',
@@ -64,7 +66,7 @@ key_dir = os.path.join(this_dir, 'keys')
 lua_dir = os.path.join(this_dir, 'lua')
 tools_dir = os.path.join(this_dir, '..', 'tools')
 
-all_suites = []
+all_groups = []
 
 def canCapture():
     # XXX This appears to be evaluated at the wrong time when called
@@ -94,25 +96,25 @@ def getTsharkInfo():
     global have_kerberos
     global have_libgcrypt16
     global have_libgcrypt17
-    have_lua = False
-    have_nghttp2 = False
-    have_kerberos = False
-    have_libgcrypt16 = False
-    have_libgcrypt17 = False
+    if not cmd_tshark:
+        logging.warning("tshark binary is not yet set")
+        return
     try:
-        tshark_v_blob = str(subprocess.check_output((cmd_tshark, '--version'), stderr=subprocess.PIPE))
-        tshark_v = ' '.join(tshark_v_blob.splitlines())
-        if re.search('with +Lua', tshark_v):
-            have_lua = True
-        if re.search('with +nghttp2', tshark_v):
-            have_nghttp2 = True
-        if re.search('(with +MIT +Kerberos|with +Heimdal +Kerberos)', tshark_v):
-            have_kerberos = True
-        gcry_m = re.search('with +Gcrypt +([0-9]+\.[0-9]+)', tshark_v)
-        have_libgcrypt16 = gcry_m and float(gcry_m.group(1)) >= 1.6
-        have_libgcrypt17 = gcry_m and float(gcry_m.group(1)) >= 1.7
-    except:
-        pass
+        tshark_v = subprocess.check_output(
+            (cmd_tshark, '--version'),
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            env={'WIRESHARK_CONFIG_DIR': '/dummy/non/existing'}
+        ).replace('\n', ' ')
+    except subprocess.CalledProcessError as e:
+        logging.warning("Failed to detect tshark features: %s", e)
+        tshark_v = ''
+    have_lua = bool(re.search('with +Lua', tshark_v))
+    have_nghttp2 = bool(re.search('with +nghttp2', tshark_v))
+    have_kerberos = bool(re.search('(with +MIT +Kerberos|with +Heimdal +Kerberos)', tshark_v))
+    gcry_m = re.search('with +Gcrypt +([0-9]+\.[0-9]+)', tshark_v)
+    have_libgcrypt16 = gcry_m and float(gcry_m.group(1)) >= 1.6
+    have_libgcrypt17 = gcry_m and float(gcry_m.group(1)) >= 1.7
 
 def getDefaultCaptureInterface():
     '''Choose a default capture interface for our platform. Currently Windows only.'''
@@ -254,4 +256,3 @@ if sys.platform.startswith('win32') or sys.platform.startswith('darwin'):
 
 # Initialize ourself.
 getPingCommand()
-setProgramPath(os.path.curdir)

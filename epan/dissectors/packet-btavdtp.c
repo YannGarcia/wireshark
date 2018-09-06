@@ -719,13 +719,11 @@ dissect_sep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offset,
             key[6].length = 0;
             key[6].key    = NULL;
 
-            sep_data = wmem_new(wmem_file_scope(), sep_entry_t);
+            sep_data = wmem_new0(wmem_file_scope(), sep_entry_t);
             sep_data->seid = seid;
             sep_data->type = type;
             sep_data->media_type = media_type;
-            sep_data->int_seid = 0;
             sep_data->codec = -1;
-            sep_data->content_protection_type = 0;
             if (in_use) {
                 sep_data->state = SEP_STATE_IN_USE;
             } else {
@@ -809,7 +807,7 @@ dissect_codec(tvbuff_t *tvb, packet_info *pinfo, proto_item *service_item, proto
                             (value8[1] & 0x0C) ? "" : "not set ",
                             (value8[1] & 0x02) ? "SNR " : "",
                             (value8[1] & 0x01) ? "Loudness " : "",
-                            (value8[0] & 0x03) ? "" : "not set ",
+                            (value8[1] & 0x03) ? "" : "not set ",
                             value8[2],
                             value8[3]);
 
@@ -834,7 +832,7 @@ dissect_codec(tvbuff_t *tvb, packet_info *pinfo, proto_item *service_item, proto
                             (value8[1] & 0x0C) ? "" : "not set ",
                             (value8[1] & 0x02) ? "SNR " : "",
                             (value8[1] & 0x01) ? "Loudness " : "",
-                            (value8[0] & 0x03) ? "" : "not set ",
+                            (value8[1] & 0x03) ? "" : "not set ",
                             value8[2],
                             value8[3]);
                     } else {
@@ -2407,22 +2405,22 @@ proto_register_btavdtp(void)
             NULL, HFILL }
         },
         { &hf_btavdtp_mpeg24_object_type_mpeg2_aac_lc,
-            { "MPEG2 ACC LC",                   "btavdtp.codec.mpeg24.object_type.mpeg2_aac_lc",
+            { "MPEG2 AAC LC",                   "btavdtp.codec.mpeg24.object_type.mpeg2_aac_lc",
             FT_BOOLEAN, 8, NULL, 0x80,
             NULL, HFILL }
         },
         { &hf_btavdtp_mpeg24_object_type_mpeg4_aac_lc,
-            { "MPEG4 ACC LC",                   "btavdtp.codec.mpeg24.object_type.mpeg4_aac_lc",
+            { "MPEG4 AAC LC",                   "btavdtp.codec.mpeg24.object_type.mpeg4_aac_lc",
             FT_BOOLEAN, 8, NULL, 0x40,
             NULL, HFILL }
         },
         { &hf_btavdtp_mpeg24_object_type_mpeg4_aac_ltp,
-            { "MPEG4 ACC LTP",                  "btavdtp.codec.mpeg24.object_type.mpeg4_aac_ltp",
+            { "MPEG4 AAC LTP",                  "btavdtp.codec.mpeg24.object_type.mpeg4_aac_ltp",
             FT_BOOLEAN, 8, NULL, 0x20,
             NULL, HFILL }
         },
         { &hf_btavdtp_mpeg24_object_type_mpeg4_aac_scalable,
-            { "MPEG4 ACC Scalable",             "btavdtp.codec.mpeg24.object_type.mpeg4_aac_scalable",
+            { "MPEG4 AAC Scalable",             "btavdtp.codec.mpeg24.object_type.mpeg4_aac_scalable",
             FT_BOOLEAN, 8, NULL, 0x10,
             NULL, HFILL }
         },

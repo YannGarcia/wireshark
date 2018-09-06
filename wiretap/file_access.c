@@ -73,7 +73,9 @@
 #include "nettrace_3gpp_32_423.h"
 #include "mplog.h"
 #include "dpa400.h"
-#include "pem.h"
+#include "rfc7468.h"
+#include "ruby_marshal.h"
+#include "systemd_journal.h"
 
 /*
  * Add an extension, and all compressed versions thereof, to a GSList
@@ -143,7 +145,8 @@ static const struct file_extension_info file_type_extensions_base[] = {
 	{ "MPEG files", FALSE, "mpg;mp3" },
 	{ "Transport-Neutral Encapsulation Format", FALSE, "tnef" },
 	{ "JPEG/JFIF files", FALSE, "jpg;jpeg;jfif" },
-	{ "JavaScript Object Notation file", FALSE, "json" }
+	{ "JavaScript Object Notation file", FALSE, "json" },
+	{ "Ruby Marshal Object", FALSE, "" }
 };
 
 #define	N_FILE_TYPE_EXTENSIONS	(sizeof file_type_extensions_base / sizeof file_type_extensions_base[0])
@@ -354,7 +357,7 @@ static const struct open_info open_info_base[] = {
 	{ "MIME Files Format",                      OPEN_INFO_MAGIC,     mime_file_open,           NULL,       NULL, NULL },
 	{ "Micropross mplog",                       OPEN_INFO_MAGIC,     mplog_open,               "mplog",    NULL, NULL },
 	{ "Unigraf DPA-400 capture",                OPEN_INFO_MAGIC,     dpa400_open,              "bin",      NULL, NULL },
-	{ "ASN.1 (PEM-like encoding)",              OPEN_INFO_MAGIC,     pem_open,                 "pem;crt",  NULL, NULL },
+	{ "RFC 7468 files",                         OPEN_INFO_MAGIC,     rfc7468_open,                 "pem;crt",  NULL, NULL },
 	{ "Novell LANalyzer",                       OPEN_INFO_HEURISTIC, lanalyzer_open,           "tr1",      NULL, NULL },
 	/*
 	 * PacketLogger must come before MPEG, because its files
@@ -402,7 +405,9 @@ static const struct open_info open_info_base[] = {
 	/* Extremely weak heuristics - put them at the end. */
 	{ "Ixia IxVeriWave .vwr Raw Capture",       OPEN_INFO_HEURISTIC, vwr_open,                 "vwr",      NULL, NULL },
 	{ "CAM Inspector file",                     OPEN_INFO_HEURISTIC, camins_open,              "camins",   NULL, NULL },
-	{ "JavaScript Object Notation",             OPEN_INFO_HEURISTIC, json_open,                "json",     NULL, NULL }
+	{ "JavaScript Object Notation",             OPEN_INFO_HEURISTIC, json_open,                "json",     NULL, NULL },
+	{ "Ruby Marshal Object",                    OPEN_INFO_HEURISTIC, ruby_marshal_open,        "",  NULL, NULL },
+	{ "Systemd Journal",                        OPEN_INFO_HEURISTIC, systemd_journal_open,        "log;jnl;journal",      NULL, NULL }
 };
 
 /* this is only used to build the dynamic array on load, do NOT use this
@@ -1614,8 +1619,8 @@ static const struct file_type_subtype_info dump_open_table_base[] = {
 	  FALSE, FALSE, 0,
 	  NULL, NULL, NULL },
 
-	/* WTAP_FILE_TYPE_SUBTYPE_PEM */
-	{ "ASN.1 (PEM-like encoding)", "pem", NULL, NULL,
+	/* WTAP_FILE_TYPE_SUBTYPE_RFC7468 */
+	{ "RFC 7468 files", "rfc7468", NULL, NULL,
 	  FALSE, FALSE, 0,
 	  NULL, NULL, NULL }
 };
@@ -1632,7 +1637,7 @@ static const struct file_type_subtype_info* dump_open_table = dump_open_table_ba
  * to the number of elements in the static table, but, if we have to
  * allocate the GArray, it's changed to have the size of the GArray.
  */
-gint wtap_num_file_types_subtypes = sizeof(dump_open_table_base) / sizeof(struct file_type_subtype_info);
+static gint wtap_num_file_types_subtypes = sizeof(dump_open_table_base) / sizeof(struct file_type_subtype_info);
 
 /*
  * Pointer to the GArray; NULL until it's needed.
@@ -2022,11 +2027,13 @@ add_extensions_for_file_type_subtype(int file_type_subtype, GSList *extensions,
 
 	/*
 	 * Add the default extension, and all compressed variants of
-	 * it.
+	 * it, if there is a default extension.
 	 */
-	extensions = add_extensions(extensions,
-	    dump_open_table[file_type_subtype].default_file_extension,
-	    compressed_file_extensions);
+	if (dump_open_table[file_type_subtype].default_file_extension != NULL) {
+		extensions = add_extensions(extensions,
+		    dump_open_table[file_type_subtype].default_file_extension,
+		    compressed_file_extensions);
+	}
 
 	if (dump_open_table[file_type_subtype].additional_file_extensions != NULL) {
 		/*
@@ -2092,10 +2099,37 @@ wtap_get_file_extensions_list(int file_type_subtype, gboolean include_compressed
 	return extensions;
 }
 
+/* Return a list of all extensions that are used by all file types that
+   we can read, including compressed extensions, e.g. not just "pcap" but
+   also "pcap.gz" if we can read gzipped files.
+
+   "File type" means "include file types that correspond to collections
+   of network packets, as well as file types that store data that just
+   happens to be transported over protocols such as HTTP but that aren't
+   collections of network packets, and plain text files".
+
+   All strings in the list are allocated with g_malloc() and must be freed
+   with g_free(). */
+GSList *
+wtap_get_all_file_extensions_list(void)
+{
+	GSList *extensions;
+	int i;
+
+	extensions = NULL;	/* empty list, to start with */
+
+	for (i = 0; i < WTAP_NUM_FILE_TYPES_SUBTYPES; i++) {
+		extensions = add_extensions_for_file_type_subtype(i, extensions,
+		    compressed_file_extension_table);
+	}
+
+	return extensions;
+}
+
 /*
  * Free a list returned by wtap_get_file_extension_type_extensions(),
- * wtap_get_all_capture_file_extensions_list, or
- * wtap_get_file_extensions_list().
+ * wtap_get_all_capture_file_extensions_list, wtap_get_file_extensions_list(),
+ * or wtap_get_all_file_extensions_list().
  */
 void
 wtap_free_extensions_list(GSList *extensions)
@@ -2731,7 +2765,7 @@ wtap_dump_file_seek(wtap_dumper *wdh, gint64 offset, int whence, int *err)
 	} else
 #endif
 	{
-		if (-1 == fseek((FILE *)wdh->fh, (long)offset, whence)) {
+		if (-1 == ws_fseek64((FILE *)wdh->fh, offset, whence)) {
 			*err = errno;
 			return -1;
 		} else
@@ -2752,7 +2786,7 @@ wtap_dump_file_tell(wtap_dumper *wdh, int *err)
 	} else
 #endif
 	{
-		if (-1 == (rval = ftell((FILE *)wdh->fh))) {
+		if (-1 == (rval = ws_ftell64((FILE *)wdh->fh))) {
 			*err = errno;
 			return -1;
 		} else

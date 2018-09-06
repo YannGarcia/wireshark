@@ -86,7 +86,6 @@
 #include "epan/oids.h"
 #endif
 #include "epan/maxmind_db.h"
-#include "epan/register.h"
 #include <epan/epan_dissect.h>
 #include <epan/tap.h>
 #include <epan/stat_tap_ui.h>
@@ -104,7 +103,6 @@
 #include "caputils/capture_ifinfo.h"
 #ifdef _WIN32
 #include "caputils/capture-wpcap.h"
-#include <wsutil/os_version_info.h>
 #include <wsutil/unicode-utils.h>
 #endif /* _WIN32 */
 #include <capchild/capture_session.h>
@@ -729,7 +727,7 @@ main(int argc, char *argv[])
   int                  log_flags;
   gchar               *output_only = NULL;
   gchar               *volatile pdu_export_arg = NULL;
-  const char          *volatile exp_pdu_filename = NULL;
+  char                *volatile exp_pdu_filename = NULL;
   exp_pdu_t            exp_pdu_tap_data;
 #ifdef HAVE_JSONGLIB
   const gchar*         elastic_mapping_filter = NULL;
@@ -800,12 +798,6 @@ main(int argc, char *argv[])
 #ifdef HAVE_LIBPCAP
   /* Load wpcap if possible. Do this before collecting the run-time version information */
   load_wpcap();
-
-  /* Warn the user if npf.sys isn't loaded. */
-  if (!npf_sys_is_running() && get_windows_major_version() >= 6) {
-    fprintf(stderr, "The NPF driver isn't running.  You may have trouble "
-      "capturing or\nlisting interfaces.\n");
-  }
 #endif /* HAVE_LIBPCAP */
 #endif /* _WIN32 */
 
@@ -931,8 +923,7 @@ main(int argc, char *argv[])
      "-G" flag, as the "-G" flag dumps information registered by the
      dissectors, and we must do it before we read the preferences, in
      case any dissectors register preferences. */
-  if (!epan_init(register_all_protocols, register_all_protocol_handoffs, NULL,
-                 NULL)) {
+  if (!epan_init(NULL, NULL)) {
     exit_status = INIT_FAILED;
     goto clean_exit;
   }
@@ -1120,7 +1111,7 @@ main(int argc, char *argv[])
          * Output file name, if we're reading a file and writing to another
          * file.
          */
-        output_file_name = optarg;
+        output_file_name = g_strdup(optarg);
       } else {
         capture_option_specified = TRUE;
         arg_error = TRUE;
@@ -1998,11 +1989,16 @@ main(int argc, char *argv[])
           goto clean_exit;
       }
 
-      exp_fd = ws_open(exp_pdu_filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
-      if (exp_fd == -1) {
+      if (strcmp(exp_pdu_filename, "-") == 0) {
+        /* Write to the standard output. */
+        exp_fd = 1;
+      } else {
+        exp_fd = ws_open(exp_pdu_filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
+        if (exp_fd == -1) {
           cmdarg_err("%s: %s", exp_pdu_filename, file_open_error_message(errno, TRUE));
           exit_status = INVALID_FILE;
           goto clean_exit;
+        }
       }
 
       /* Activate the export PDU tap */
@@ -2080,6 +2076,7 @@ main(int argc, char *argv[])
             exit_status = 2;
         }
         g_free(pdu_export_arg);
+        g_free(exp_pdu_filename);
     }
   } else {
     tshark_debug("tshark: no capture file specified");
@@ -2087,6 +2084,14 @@ main(int argc, char *argv[])
        or get a list of link-layer types for a live capture device;
        do we have support for live captures? */
 #ifdef HAVE_LIBPCAP
+#ifdef _WIN32
+    /* Warn the user if npf.sys isn't loaded. */
+    if (!npf_sys_is_running()) {
+      fprintf(stderr, "The NPF driver isn't running.  You may have trouble "
+          "capturing or\nlisting interfaces.\n");
+    }
+#endif /* _WIN32 */
+
     /* if no interface was specified, pick a default */
     exit_status = capture_opts_default_iface_if_necessary(&global_capture_opts,
         ((prefs_p->capture_device) && (*prefs_p->capture_device != '\0')) ? get_if_name(prefs_p->capture_device) : NULL);
@@ -2229,6 +2234,8 @@ main(int argc, char *argv[])
   }
 
   draw_tap_listeners(TRUE);
+  /* Memory cleanup */
+  reset_tap_listeners();
   funnel_dump_all_text_windows();
   epan_free(cfile.epan);
   epan_cleanup();
@@ -2241,6 +2248,8 @@ clean_exit:
   destroy_print_stream(print_stream);
 #ifdef HAVE_LIBPCAP
   capture_opts_cleanup(&global_capture_opts);
+#else
+  g_free(output_file_name);
 #endif
   col_cleanup(&cfile.cinfo);
   free_filter_lists();
@@ -4053,10 +4062,6 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
 
   /* The open succeeded.  Fill in the information for this file. */
 
-  /* Create new epan session for dissection. */
-  epan_free(cf->epan);
-  cf->epan = tshark_epan_new(cf);
-
   cf->provider.wth = wth;
   cf->f_datalen = 0; /* not used, but set it anyway */
 
@@ -4082,7 +4087,9 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
   cf->provider.prev_dis = NULL;
   cf->provider.prev_cap = NULL;
 
-  cf->state = FILE_READ_IN_PROGRESS;
+  /* Create new epan session for dissection. */
+  epan_free(cf->epan);
+  cf->epan = tshark_epan_new(cf);
 
   wtap_set_cb_new_ipv4(cf->provider.wth, add_ipv4_name);
   wtap_set_cb_new_ipv6(cf->provider.wth, (wtap_new_ipv6_callback_t) add_ipv6_name);

@@ -9,15 +9,16 @@ UNALIGNED
 
 #.USE_VALS_EXT
 CA-BandwidthClassNR
-ConfiguredGrantConfig/configuredGrantTimer
 ConfiguredGrantConfig/periodicity
+CSI-RS-IM-ReceptionForFeedback/maxNumberPortsAcrossNZP-CSI-RS-PerCC
+CSI-RS-IM-ReceptionForFeedback/maxNumberSimultaneousCSI-RS-ActBWP-AllCC
+CSI-RS-IM-ReceptionForFeedback/totalNumberPortsSimultaneousCSI-RS-ActBWP-AllCC
 DRX-Config/drx-onDurationTimer/milliSeconds
 DRX-Config/drx-InactivityTimer
 DRX-Config/drx-RetransmissionTimerDL
 DRX-Config/drx-RetransmissionTimerUL
 DRX-Config/drx-LongCycleStartOffset
 DRX-Config/shortDRX/drx-ShortCycle
-DRX-Config/drx-SlotOffset
 DRX-Info/drx-LongCycleStartOffset
 DRX-Info/shortDRX/drx-ShortCycle
 PDCP-Config/t-Reordering
@@ -34,12 +35,18 @@ UL-DataSplitThreshold
 
 #.EXPORTS
 CellGroupConfig_PDU
+CG-Config_PDU
 CG-ConfigInfo_PDU
 ConfigRestrictInfoSCG_PDU
 FreqBandList_PDU
-MeasurementTimingConfiguration_PDU
+HandoverCommand_PDU
+HandoverPreparationInformation_PDU
+MeasConfig_PDU
+MeasGapConfig_PDU
 MeasResults_PDU
+MeasurementTimingConfiguration_PDU
 MIB_PDU
+P-Max_PDU
 RadioBearerConfig_PDU
 RRCReconfiguration_PDU
 RRCReconfigurationComplete_PDU
@@ -52,40 +59,31 @@ UL-DCCH-Message_PDU
 #.PDU
 BCCH-BCH-Message             @bcch.bch
 CellGroupConfig
+CG-Config
 CG-ConfigInfo
 ConfigRestrictInfoSCG
 DL-DCCH-Message              @dl.dcch
 FreqBandList
-MIB
-MeasurementTimingConfiguration
+HandoverCommand
+HandoverPreparationInformation
+MeasConfig
+MeasGapConfig
 MeasResults
+MeasurementTimingConfiguration
+MIB
+P-Max
 RadioBearerConfig
 RRCReconfiguration
 RRCReconfigurationComplete
 SIB1
 UE-CapabilityRAT-ContainerList
-UE-MRDC-Capability
-UE-NR-Capability
+UE-MRDC-Capability           @ue_mrdc_cap
+UE-NR-Capability             @ue_nr_cap
 UL-DCCH-Message              @ul.dcch
 #.END
 
 #.OMIT_ASSIGNMENT
-AS-Context
-CellIdentity
 CellsTriggeredList
-CG-Config
-CG-Config-IEs
-ConfigRestrictModReqSCG
-GSCN-ValueNR
-HandoverCommand
-HandoverCommand-IEs
-HandoverPreparationInformation
-HandoverPreparationInformation-IEs
-MeasConfigSN
-ReestabNCellInfo
-ReestabNCellInfoList
-RRM-Config
-ShortMAC-I
 VarMeasConfig
 VarMeasReportList
 VarMeasReport

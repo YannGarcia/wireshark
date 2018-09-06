@@ -203,6 +203,13 @@ wtap_get_debug_if_descr(const wtap_block_t if_descr,
 			wtap_encap_short_string(if_descr_mand->wtap_encap),
 			line_end);
 
+	if (wtap_block_get_string_option_value(if_descr, OPT_IDB_HARDWARE, &tmp_content) == WTAP_OPTTYPE_SUCCESS) {
+		g_string_append_printf(info,
+				"%*cHardware = %s%s", indent, ' ',
+				tmp_content ? tmp_content : "NONE",
+				line_end);
+	}
+
 	if (wtap_block_get_uint64_option_value(if_descr, OPT_IDB_SPEED, &tmp64) == WTAP_OPTTYPE_SUCCESS) {
 		g_string_append_printf(info,
 				"%*cSpeed = %" G_GINT64_MODIFIER "u%s", indent, ' ',
@@ -917,6 +924,12 @@ static struct encap_type_info encap_table_base[] = {
 
 	/* WTAP_ENCAP_DPAUXMON */
 	{ "DisplayPort AUX channel with Unigraf pseudo-header", "dpauxmon" },
+
+	/* WTAP_ENCAP_RUBY_MARSHAL */
+	{ "Ruby marshal object", "ruby_marshal" },
+
+	/* WTAP_ENCAP_RFC7468 */
+	{ "RFC 7468 file", "rfc7468" },
 };
 
 WS_DLL_LOCAL

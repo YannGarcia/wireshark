@@ -13,6 +13,8 @@
 
 #include <epan/packet.h>
 #include <wiretap/wtap.h>
+#include <epan/expert.h>
+#include <epan/crc16-tvb.h>
 
 void proto_register_xra(void);
 void proto_reg_handoff_xra(void);
@@ -50,6 +52,9 @@ static gint hf_xra_tlv = -1;
  * XRA TLV
  */
 static gint hf_xra_tlv_ds_channel_id = -1;
+static gint hf_xra_tlv_ds_channel_frequency = -1;
+static gint hf_xra_tlv_modulation = -1;
+static gint hf_xra_tlv_annex = -1;
 static gint hf_xra_tlv_us_channel_id = -1;
 static gint hf_xra_tlv_profile_id = -1;
 static gint hf_xra_tlv_sid = -1;
@@ -71,6 +76,9 @@ static gint hf_xra_tlv_ranging_stop_minislot_id_rel = -1;
 static gint hf_xra_tlv_ranging_number_ofdma_frames = -1;
 static gint hf_xra_tlv_ranging_mer = -1;
 static gint hf_xra_tlv_ranging_timing_adjust = -1;
+static gint hf_xra_tlv_ranging_power_level = -1;
+static gint hf_xra_tlv_subslot_id =-1;
+static gint hf_xra_tlv_control_word = -1;
 
 static gint hf_xra_unknown = -1;
 
@@ -86,6 +94,8 @@ static gint hf_xra_tlv_cw_info_ldpc_nr_of_code_bits = -1;
 static gint hf_xra_tlv_cw_info_ldpc_decoding_successful = -1;
 static gint hf_xra_tlv_cw_info_ldpc_number_of_corrected_bits = -1;
 static gint hf_xra_tlv_cw_info_ldpc_number_of_iterations = -1;
+static gint hf_xra_tlv_cw_info_rs_decoding_successful = -1;
+static gint hf_xra_tlv_cw_info_rs_number_of_corrected_symbols = -1;
 
 /*
  * Burst Info TLV
@@ -149,15 +159,17 @@ static gint hf_docsis_segment_sequencenumber = -1;
 static gint hf_docsis_segment_sidclusterid = -1;
 static gint hf_docsis_segment_request = -1;
 static gint hf_docsis_segment_hcs = -1;
+static gint hf_docsis_segment_hcs_status = -1;
 static gint hf_docsis_segment_data = -1;
 
+static expert_field ei_docsis_segment_hcs_bad = EI_INIT;
 
 static int dissect_xra(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _U_);
 static int dissect_xra_tlv(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _U_, guint16 tlvLength, guint* segmentHeaderPresent);
 static int dissect_plc(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _U_);
 static int dissect_ncp(tvbuff_t * tvb, proto_tree * tree, void* data _U_);
 static int dissect_init_ranging(tvbuff_t * tvb, proto_tree * tree, void* data _U_);
-static int dissect_ofdma_segment(tvbuff_t * tvb, proto_tree * tree, void* data _U_);
+static int dissect_ofdma_segment(tvbuff_t * tvb, packet_info* pinfo, proto_tree * tree, void* data _U_);
 
 
 
@@ -200,6 +212,7 @@ static int dissect_ofdma_segment(tvbuff_t * tvb, proto_tree * tree, void* data _
 #define XRA_ESTIMATED_TIMING_ADJUST 20
 #define XRA_ESTIMATED_POWER_LEVEL 21
 #define XRA_SUBSLOT_ID 22
+#define XRA_CONTROL_WORD 23
 
 #define XRA_CONFIGURATION_INFO 254
 #define XRA_EXTENSION_TYPE 255
@@ -214,6 +227,8 @@ static int dissect_ofdma_segment(tvbuff_t * tvb, proto_tree * tree, void* data _
 #define XRA_TLV_CW_INFO_LDPC_DECODING_SUCCESSFUL 6
 #define XRA_TLV_CW_INFO_LDPC_NUMBER_OF_CORRECTED_BITS 7
 #define XRA_TLV_CW_INFO_LDPC_NUMBER_OF_ITERATIONS 8
+#define XRA_TLV_CW_INFO_RS_DECODING_SUCCESFUL 9
+#define XRA_TLV_CW_INFO_RS_NUMBER_OF_CORRECTED_SYMBOLS 10
 
 /*Burst Info Sub-Tlv*/
 #define XRA_BURST_INFO_BURST_ID_REFERENCE 1
@@ -254,6 +269,19 @@ static const value_string packettype[] = {
   {XRA_PACKETTYPE_US_DOCSIS_MACFRAME, "US DOCSIS Macframe"},
   {0, NULL}
 };
+
+static const value_string annex_vals[] = {
+  {0, "Annex A"},
+  {1, "Annex B"},
+  {0, NULL}
+};
+
+static const value_string modulation_vals[] = {
+  {0, "64-QAM"},
+  {1, "256-QAM"},
+  {0, NULL}
+};
+
 
 static const value_string profile_id[] = {
   {0, "Profile A"},
@@ -314,10 +342,42 @@ static const true_false_string codeword_tagging = {
   "this codeword is not included in the codeword counts reported by the CM in the OPT-RSP message"
 };
 
+static const value_string local_proto_checksum_vals[] = {
+  { PROTO_CHECKSUM_E_BAD, "Bad"},
+  { PROTO_CHECKSUM_E_GOOD, "Good"},
+  { 0, NULL}
+};
+
+static const value_string control_word_vals[] = {
+  { 0, "I=128, J=1"},
+  { 1, "I=128, J=1"},
+  { 2, "I=128, J=2"},
+  { 3, "I=64, J=2"},
+  { 4, "I=128, J=3"},
+  { 5, "I=32, J=4"},
+  { 6, "I=128, J=4"},
+  { 7, "I=16, J=8"},
+  { 8, "I=128, J=5"},
+  { 9, "I=8, J=16"},
+  { 10, "I=128, J=6"},
+  { 11, "Reserved"},
+  { 12, "I=128, J=7"},
+  { 13, "Reserved"},
+  { 14, "I=128, J=8"},
+  { 15, "Reserved"},
+  { 0, NULL}
+};
+
 static void
 mer_fourth_db(char *buf, guint32 value)
 {
     g_snprintf(buf, ITEM_LABEL_LENGTH, "%f dB", value/4.0);
+}
+
+static void
+mer_tenth_db_signed(char *buf, guint32 value)
+{
+    g_snprintf(buf, ITEM_LABEL_LENGTH, "%f dB", ((gint32) value)/10.0);
 }
 
 static int
@@ -351,8 +411,12 @@ dissect_xra(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _
   dissect_xra_tlv(xra_tlv_tvb, pinfo, xra_tree, data, tlv_length, &segment_header_present);
 
   guint16 xra_length = 4 + tlv_length;
+  if(tvb_reported_length_remaining(tvb, xra_length) == 0) {
+    return xra_length;
+  }
   /*Dissecting contents*/
   switch(packet_type) {
+    case XRA_PACKETTYPE_DS_SCQAM_DOCSIS_MACFRAME:
     case XRA_PACKETTYPE_OFDM_DOCSIS:
       /*Calling docsis dissector*/
       docsis_tvb = tvb_new_subset_length(tvb, xra_length, tvb_captured_length_remaining(tvb, xra_length));
@@ -366,13 +430,15 @@ dissect_xra(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _
     case XRA_PACKETTYPE_OFDM_NCP:
       ncp_tvb = tvb_new_subset_length(tvb, xra_length, tvb_captured_length_remaining(tvb, xra_length));
       return dissect_ncp(ncp_tvb, tree, data);
+    case XRA_PACKETTYPE_TDMA_BURST:
     case XRA_PACKETTYPE_OFDMA_DATA_BURST:
       if(segment_header_present) {
         col_append_str(pinfo->cinfo, COL_INFO, ": Segment");
         segment_tvb = tvb_new_subset_length(tvb, xra_length, tvb_captured_length_remaining(tvb, xra_length));
-        return dissect_ofdma_segment(segment_tvb, tree, data);
+        return dissect_ofdma_segment(segment_tvb, pinfo, tree, data);
       }
       break;
+    case XRA_PACKETTYPE_OFDMA_REQ:
     case XRA_PACKETTYPE_US_DOCSIS_MACFRAME:
       /*Calling docsis dissector*/
       docsis_tvb = tvb_new_subset_length(tvb, xra_length, tvb_captured_length_remaining(tvb, xra_length));
@@ -436,6 +502,12 @@ dissect_xra_tlv_cw_info(tvbuff_t * tvb, proto_tree * tree, void* data _U_, guint
         break;
       case XRA_TLV_CW_INFO_LDPC_NUMBER_OF_ITERATIONS:
         proto_tree_add_item (xra_tlv_cw_info_tree, hf_xra_tlv_cw_info_ldpc_number_of_iterations, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
+      case XRA_TLV_CW_INFO_RS_DECODING_SUCCESFUL:
+        proto_tree_add_item(xra_tlv_cw_info_tree, hf_xra_tlv_cw_info_rs_decoding_successful, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
+      case XRA_TLV_CW_INFO_RS_NUMBER_OF_CORRECTED_SYMBOLS:
+        proto_tree_add_item(xra_tlv_cw_info_tree, hf_xra_tlv_cw_info_rs_number_of_corrected_symbols, tvb, tlv_index, length, ENC_BIG_ENDIAN);
         break;
       default:
         proto_tree_add_item (xra_tlv_cw_info_tree, hf_xra_unknown, tvb, tlv_index, length, ENC_NA);
@@ -540,6 +612,15 @@ dissect_xra_tlv(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* da
       case XRA_DS_CHANNEL_ID:
         proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_ds_channel_id, tvb, tlv_index, length, ENC_BIG_ENDIAN);
         break;
+      case XRA_DS_FREQUENCY:
+        proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_ds_channel_frequency, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
+      case XRA_MODULATION:
+        proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_modulation, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
+      case XRA_ANNEX:
+        proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_annex, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
       case XRA_PROFILE_ID:
         proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_profile_id, tvb, tlv_index, length, ENC_BIG_ENDIAN);
         break;
@@ -591,6 +672,15 @@ dissect_xra_tlv(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* da
         break;
       case XRA_ESTIMATED_TIMING_ADJUST:
         proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_ranging_timing_adjust, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
+      case XRA_ESTIMATED_POWER_LEVEL:
+        proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_ranging_power_level, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
+      case XRA_SUBSLOT_ID:
+        proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_subslot_id, tvb, tlv_index, length, ENC_BIG_ENDIAN);
+        break;
+      case XRA_CONTROL_WORD:
+         proto_tree_add_item (xra_tlv_tree, hf_xra_tlv_control_word, tvb, tlv_index, length, ENC_BIG_ENDIAN);
         break;
       default:
         proto_tree_add_item (xra_tlv_tree, hf_xra_unknown, tvb, tlv_index, length, ENC_NA);
@@ -791,7 +881,7 @@ dissect_init_ranging(tvbuff_t * tvb, proto_tree * tree, void* data _U_) {
 }
 
 static int
-dissect_ofdma_segment(tvbuff_t * tvb, proto_tree * tree, void* data _U_) {
+dissect_ofdma_segment(tvbuff_t * tvb, packet_info* pinfo, proto_tree * tree, void* data _U_) {
   proto_tree *segment_tree;
   proto_item *segment_item;
 
@@ -805,7 +895,12 @@ dissect_ofdma_segment(tvbuff_t * tvb, proto_tree * tree, void* data _U_) {
   proto_tree_add_item (segment_tree, hf_docsis_segment_sequencenumber, tvb, 2, 2, ENC_BIG_ENDIAN);
   proto_tree_add_item (segment_tree, hf_docsis_segment_sidclusterid, tvb, 3, 1, ENC_BIG_ENDIAN);
   proto_tree_add_item (segment_tree, hf_docsis_segment_request, tvb, 4, 2, ENC_BIG_ENDIAN);
-  proto_tree_add_item (segment_tree, hf_docsis_segment_hcs, tvb, 6, 2, ENC_BIG_ENDIAN);
+
+  /* dissect the header check sequence */
+  /* CRC-CCITT(16+12+5+1) */
+  guint16 fcs = g_ntohs(crc16_ccitt_tvb(tvb, 6));
+  proto_tree_add_checksum(segment_tree, tvb, 6, hf_docsis_segment_hcs, hf_docsis_segment_hcs_status, &ei_docsis_segment_hcs_bad, pinfo, fcs, ENC_BIG_ENDIAN, PROTO_CHECKSUM_VERIFY);
+
   proto_tree_add_item (segment_tree, hf_docsis_segment_data, tvb, 8, tvb_captured_length_remaining(tvb, 8), ENC_NA);
 
   return tvb_captured_length(tvb);
@@ -844,6 +939,21 @@ proto_register_xra (void)
     {&hf_xra_tlv_ds_channel_id,
       {"DS Channel ID", "xra.tlv.ds_channel_id",
         FT_UINT8, BASE_DEC, NULL, 0x0,
+        NULL, HFILL}
+    },
+    {&hf_xra_tlv_ds_channel_frequency,
+      {"DS Channel Frequency", "xra.tlv.ds_channel_frequency",
+        FT_UINT32, BASE_DEC, NULL, 0x0,
+        NULL, HFILL}
+    },
+    {&hf_xra_tlv_modulation,
+      {"Modulation", "xra.tlv.modulation",
+        FT_UINT8, BASE_DEC, VALS(modulation_vals), 0x0,
+        NULL, HFILL}
+    },
+    {&hf_xra_tlv_annex,
+      {"Annex", "xra.tlv.annex",
+        FT_UINT8, BASE_DEC, VALS(annex_vals), 0x0,
         NULL, HFILL}
     },
     {&hf_xra_tlv_us_channel_id,
@@ -932,6 +1042,22 @@ proto_register_xra (void)
         FT_INT32, BASE_DEC, NULL, 0x0,
         NULL, HFILL}
     },
+    {&hf_xra_tlv_ranging_power_level,
+      {"Estimated Power Level (0.10 dB units, signed)", "xra.tlv.ranging.power_level",
+        FT_INT16, BASE_CUSTOM, CF_FUNC(mer_tenth_db_signed), 0x0,
+        NULL, HFILL}
+    },
+    {&hf_xra_tlv_subslot_id,
+      {"Subslot ID", "xra.tlv.subslot_id",
+        FT_UINT32, BASE_DEC, NULL, 0x0,
+        NULL, HFILL}
+    },
+    {&hf_xra_tlv_control_word,
+      {"Control Word", "xra.tlv.control_word",
+        FT_UINT8, BASE_DEC, VALS(control_word_vals), 0x0,
+        NULL, HFILL}
+    },
+
     /*Codeword Info DS*/
     {&hf_xra_tlv_cw_info,
       {"Codeword Info", "xra.tlv.cw_info",
@@ -976,6 +1102,16 @@ proto_register_xra (void)
     {&hf_xra_tlv_cw_info_ldpc_number_of_corrected_bits,
       {"LDPC Number of corrected info bits", "xra.tlv.cw_info.ldpc_number_of_corrected_bits",
         FT_UINT16, BASE_DEC, NULL, 0x0,
+        NULL, HFILL}
+    },
+    {&hf_xra_tlv_cw_info_rs_decoding_successful,
+      {"Reed-Solomon Decoding Successful", "xra.tlv.cw_info.rs_decoding_successful",
+        FT_BOOLEAN, 8, NULL, 0x0,
+        NULL, HFILL}
+    },
+    {&hf_xra_tlv_cw_info_rs_number_of_corrected_symbols,
+      {"Reed-Solomon Number of Corrected Symbols", "xra.tlv.cw_info.rs_number_of_corrected_symbols",
+        FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL}
     },
     {&hf_xra_unknown,
@@ -1151,11 +1287,20 @@ proto_register_xra (void)
         FT_UINT16, BASE_HEX, NULL, 0x0,
         NULL, HFILL}
     },
+    { &hf_docsis_segment_hcs_status,
+     { "Segment HCS Status", "docsis_segment.hcs.status",
+       FT_UINT8, BASE_NONE, VALS(local_proto_checksum_vals), 0x0,
+       NULL, HFILL}
+    },
     {&hf_docsis_segment_data,
       {"Data", "docsis_segment.data",
         FT_BYTES, BASE_NONE, NULL, 0x0,
         NULL, HFILL}
     },
+  };
+
+  static ei_register_info ei[] = {
+      { &ei_docsis_segment_hcs_bad, { "docsis_segment.hcs_bad", PI_CHECKSUM, PI_ERROR, "Bad checksum", EXPFILL }},
   };
 
   /* Setup protocol subtree array */
@@ -1172,6 +1317,7 @@ proto_register_xra (void)
     &ett_init_ranging
   };
 
+  expert_module_t* expert_xra;
 
   /* Register the protocol name and description */
   proto_xra = proto_register_protocol ("Excentis XRA header", "XRA", "xra");
@@ -1180,6 +1326,9 @@ proto_register_xra (void)
   proto_ncp = proto_register_protocol("DOCSIS_NCP", "DOCSIS_NCP", "docsis_ncp");
   proto_init_ranging = proto_register_protocol("DOCSIS_INIT_RANGING", "DOCSIS_INIT_RANGING", "docsis_init_ranging");
 
+  /* register expert notifications */
+  expert_xra = expert_register_protocol(proto_xra);
+  expert_register_field_array(expert_xra, ei, array_length(ei));
 
   /* Required function calls to register the header fields and subtrees used */
   proto_register_field_array (proto_xra, hf, array_length (hf));

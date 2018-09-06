@@ -70,7 +70,6 @@
 #include "ui/util.h"
 #include "ui/dissect_opts.h"
 #include "ui/failure_message.h"
-#include "epan/register.h"
 #include "conditions.h"
 #include "capture_stop_conditions.h"
 #include <epan/epan_dissect.h>
@@ -520,8 +519,7 @@ main(int argc, char *argv[])
        "-G" flag, as the "-G" flag dumps information registered by the
        dissectors, and we must do it before we read the preferences, in
        case any dissectors register preferences. */
-    if (!epan_init(register_all_protocols, register_all_protocol_handoffs,
-                   NULL, NULL)) {
+    if (!epan_init(NULL, NULL)) {
         ret = INIT_ERROR;
         goto clean_exit;
     }
@@ -697,8 +695,6 @@ main(int argc, char *argv[])
             case 'v':        /* Show version and exit */
             {
                 show_version("Rawshark (Wireshark)", comp_info_str, runtime_info_str);
-                g_string_free(comp_info_str, TRUE);
-                g_string_free(runtime_info_str, TRUE);
                 goto clean_exit;
             }
             default:
@@ -825,6 +821,9 @@ main(int argc, char *argv[])
     }
 
 clean_exit:
+    g_free(pipe_name);
+    g_string_free(comp_info_str, TRUE);
+    g_string_free(runtime_info_str, TRUE);
     epan_free(cfile.epan);
     epan_cleanup();
     extcap_cleanup();
@@ -1321,7 +1320,7 @@ protocolinfo_init(char *field)
     rs->filter=field;
     rs->cmd_line_index = g_cmd_line_index++;
 
-    error_string=register_tap_listener("frame", rs, rs->filter, TL_REQUIRES_PROTO_TREE, NULL, protocolinfo_packet, NULL);
+    error_string=register_tap_listener("frame", rs, rs->filter, TL_REQUIRES_PROTO_TREE, NULL, protocolinfo_packet, NULL, NULL);
     if(error_string){
         /* error, we failed to attach to the tap. complain and clean up */
         fprintf(stderr, "rawshark: Couldn't register field extraction tap: %s\n",

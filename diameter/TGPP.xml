@@ -708,6 +708,7 @@
 		<enum name="DEREGISTRATION_TOO_MUCH_DATA" code="11"/>
 		<enum name="AAA_USER_DATA_REQUEST" code="12"/>
 		<enum name="PGW_UPDATE" code="13"/>
+		<enum name="RESTORATION" code="14"/>
 	</avp>
 	<avp name="Deregistration-Reason" code="615" mandatory="must" vendor-bit="must" vendor-id="TGPP" may-encrypt="yes">
 		<grouped>
@@ -1401,6 +1402,11 @@
 	</avp>
 	<avp name="Cause-Type" code="4301" mandatory="must" vendor-bit="must" may-encrypt="no" vendor-id="TGPP">
 		<type type-name="Unsigned32"/>
+ 		<enum name="RADIO_NETWORK_LAYER" code="0"/>
+ 		<enum name="TRANSPORT_LAYER" code="1"/>
+ 		<enum name="NAS" code="2"/>
+ 		<enum name="PROTOCOL" code="3"/>
+ 		<enum name="MISCELLANEOUS" code="4"/>
 	</avp>
 	<avp name="S1AP-Cause" code="4302" mandatory="must" vendor-bit="must" may-encrypt="no" vendor-id="TGPP">
 		<type type-name="Unsigned32"/>
@@ -1417,12 +1423,14 @@
 	<avp name="Number-Of-UE-Per-Location-Configuration" code="4306" mandatory="must" vendor-bit="must" may-encrypt="no" vendor-id="TGPP">
 		<grouped>
 			<gavp name="EPS-Location-Information"/>
+                        <gavp name="IMSI-Group-Id"/>
 		</grouped>
 	</avp>
 	<avp name="Number-Of-UE-Per-Location-Report" code="4307" mandatory="must" vendor-bit="must" may-encrypt="no" vendor-id="TGPP">
 		<grouped>
 			<gavp name="EPS-Location-Information"/>
 			<gavp name="UE-Count"/>
+                        <gavp name="IMSI-Group-Id"/>
 		</grouped>
 	</avp>
 	<avp name="UE-Count" code="4308" mandatory="must" vendor-bit="must" may-encrypt="no" vendor-id="TGPP">
@@ -1448,6 +1456,9 @@
 	</avp>
 	<avp name="Connection-Action" code="4314" mandatory="must" vendor-bit="must" may-encrypt="no" vendor-id="TGPP">
 		<type type-name="Unsigned32"/>
+ 		<enum name="CONNECTION_ESTABLISHMENT" code="0"/>
+ 		<enum name="CONNECTION_RELEASE" code="1"/>
+ 		<enum name="CONNECTION_UPDATE" code="2"/>
 	</avp>
 	<avp name="Non-IP-Data" code="4315" mandatory="must" vendor-bit="must" may-encrypt="no" vendor-id="TGPP">
 		<type type-name="OctetString"/>

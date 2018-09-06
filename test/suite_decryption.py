@@ -259,6 +259,58 @@ class case_decrypt_tls(subprocesstest.SubprocessTestCase):
             env=config.test_env)
         self.assertTrue(self.grepOutput('TLS13-CHACHA20-POLY1305-SHA256'))
 
+    def test_tls13_rfc8446(self):
+        '''TLS 1.3 (normal session, then early data followed by normal data).'''
+        if not config.have_libgcrypt16:
+            self.skipTest('Requires GCrypt 1.6 or later.')
+        capture_file = os.path.join(config.capture_dir, 'tls13-rfc8446.pcap')
+        key_file = os.path.join(config.key_dir, 'tls13-rfc8446.keys')
+        proc = self.runProcess((config.cmd_tshark,
+                '-r', capture_file,
+                '-ossl.keylog_file:{}'.format(key_file),
+                '-Y', 'http',
+                '-Tfields',
+                '-e', 'frame.number',
+                '-e', 'http.request.uri',
+                '-e', 'http.file_data',
+                '-E', 'separator=|',
+            ),
+            env=config.test_env)
+        self.assertEqual([
+            r'5|/first|',
+            r'6||Request for /first, version TLSv1.3, Early data: no\n',
+            r'8|/early|',
+            r'10||Request for /early, version TLSv1.3, Early data: yes\n',
+            r'12|/second|',
+            r'13||Request for /second, version TLSv1.3, Early data: yes\n',
+        ], proc.stdout_str.splitlines())
+
+    def test_tls13_rfc8446_noearly(self):
+        '''TLS 1.3 (with undecryptable early data).'''
+        if not config.have_libgcrypt16:
+            self.skipTest('Requires GCrypt 1.6 or later.')
+        capture_file = os.path.join(config.capture_dir, 'tls13-rfc8446.pcap')
+        key_file = os.path.join(config.key_dir, 'tls13-rfc8446-noearly.keys')
+        proc = self.runProcess((config.cmd_tshark,
+                '-r', capture_file,
+                '-ossl.keylog_file:{}'.format(key_file),
+                '-Y', 'http',
+                '-Tfields',
+                '-e', 'frame.number',
+                '-e', 'http.request.uri',
+                '-e', 'http.file_data',
+                '-E', 'separator=|',
+            ),
+            env=config.test_env)
+        self.assertEqual([
+            r'5|/first|',
+            r'6||Request for /first, version TLSv1.3, Early data: no\n',
+            r'10||Request for /early, version TLSv1.3, Early data: yes\n',
+            r'12|/second|',
+            r'13||Request for /second, version TLSv1.3, Early data: yes\n',
+        ], proc.stdout_str.splitlines())
+
+
 class case_decrypt_zigbee(subprocesstest.SubprocessTestCase):
     def test_zigbee(self):
         '''ZigBee'''
@@ -485,3 +537,224 @@ class case_decrypt_kerberos(subprocesstest.SubprocessTestCase):
             env=config.test_env)
         # keyvalue: ccda7d48219f73c3b28311c4ba7242b3
         self.assertTrue(self.grepOutput('cc:da:7d:48:21:9f:73:c3:b2:83:11:c4:ba:72:42:b3'))
+
+class case_decrypt_wireguard(subprocesstest.SubprocessTestCase):
+    # The "foo_alt" keys are similar as "foo" except that some bits are changed.
+    # The crypto library should be able to handle this and internally the
+    # dissector uses MSB to recognize whether a private key is set.
+    key_Spriv_i = 'AKeZaHwBxjiKLFnkY2unvEdOTtg4AL+M9dQXfopFVFk='
+    key_Spriv_i_alt = 'B6eZaHwBxjiKLFnkY2unvEdOTtg4AL+M9dQXfopFVJk='
+    key_Spub_i = 'Igge9KzRytKNwrgkzDE/8hrLu6Ly0OqVdvOPWhA5KR4='
+    key_Spriv_r = 'cFIxTUyBs1Qil414hBwEgvasEax8CKJ5IS5ZougplWs='
+    key_Spub_r = 'YDCttCs9e1J52/g9vEnwJJa+2x6RqaayAYMpSVQfGEY='
+    key_Epriv_i0 = 'sLGLJSOQfyz7JNJ5ZDzFf3Uz1rkiCMMjbWerNYcPFFU='
+    key_Epriv_i0_alt = 't7GLJSOQfyz7JNJ5ZDzFf3Uz1rkiCMMjbWerNYcPFJU='
+    key_Epriv_r0 = 'QC4/FZKhFf0b/eXEcCecmZNt6V6PXmRa4EWG1PIYTU4='
+    key_Epriv_i1 = 'ULv83D+y3vA0t2mgmTmWz++lpVsrP7i4wNaUEK2oX0E='
+    key_Epriv_r1 = 'sBv1dhsm63cbvWMv/XML+bvynBp9PTdY9Vvptu3HQlg='
+    # Ephemeral keys and PSK for wireguard-psk.pcap
+    key_Epriv_i2 = 'iCv2VTi/BC/q0egU931KXrrQ4TSwXaezMgrhh7uCbXs='
+    key_Epriv_r2 = '8G1N3LnEqYC7+NW/b6mqceVUIGBMAZSm+IpwG1U0j0w='
+    key_psk2 = '//////////////////////////////////////////8='
+    key_Epriv_i3 = '+MHo9sfkjPsjCx7lbVhRLDvMxYvTirOQFDSdzAW6kUQ='
+    key_Epriv_r3 = '0G6t5j1B/We65MXVEBIGuRGYadwB2ITdvJovtAuATmc='
+    key_psk3 = 'iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIg='
+    # dummy key that should not work with anything.
+    key_dummy = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx='
+
+    def runOne(self, args, keylog=None, pcap_file='wireguard-ping-tcp.pcap'):
+        if not config.have_libgcrypt17:
+            self.skipTest('Requires Gcrypt 1.7 or later')
+        capture_file = os.path.join(config.capture_dir, pcap_file)
+        if keylog:
+            keylog_file = self.filename_from_id('wireguard.keys')
+            args += ['-owg.keylog_file:%s' % keylog_file]
+            with open(keylog_file, 'w') as f:
+                f.write("\n".join(keylog))
+        proc = self.runProcess([config.cmd_tshark, '-r', capture_file] + args,
+                               env=config.test_env)
+        lines = proc.stdout_str.splitlines()
+        return lines
+
+    def test_mac1_public(self):
+        """Check that MAC1 identification using public keys work."""
+        lines = self.runOne([
+            '-ouat:wg_keys:"Public","%s"' % self.key_Spub_i,
+            '-ouat:wg_keys:"Public","%s"' % self.key_Spub_r,
+            '-Y', 'wg.receiver_pubkey',
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.receiver_pubkey',
+            '-e', 'wg.receiver_pubkey.known_privkey',
+        ])
+        self.assertEqual(4, len(lines))
+        self.assertIn('1\t%s\t0' % self.key_Spub_r, lines)
+        self.assertIn('2\t%s\t0' % self.key_Spub_i, lines)
+        self.assertIn('13\t%s\t0' % self.key_Spub_r, lines)
+        self.assertIn('14\t%s\t0' % self.key_Spub_i, lines)
+
+    def test_mac1_private(self):
+        """Check that MAC1 identification using private keys work."""
+        lines = self.runOne([
+            '-ouat:wg_keys:"Private","%s"' % self.key_Spriv_i,
+            '-ouat:wg_keys:"Private","%s"' % self.key_Spriv_r,
+            '-Y', 'wg.receiver_pubkey',
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.receiver_pubkey',
+            '-e', 'wg.receiver_pubkey.known_privkey',
+        ])
+        self.assertEqual(4, len(lines))
+        self.assertIn('1\t%s\t1' % self.key_Spub_r, lines)
+        self.assertIn('2\t%s\t1' % self.key_Spub_i, lines)
+        self.assertIn('13\t%s\t1' % self.key_Spub_r, lines)
+        self.assertIn('14\t%s\t1' % self.key_Spub_i, lines)
+
+    def test_decrypt_initiation_sprivr(self):
+        """Check for partial decryption using Spriv_r."""
+        lines = self.runOne([
+            '-ouat:wg_keys:"Private","%s"' % self.key_Spriv_r,
+            '-Y', 'wg.type==1',
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.static',
+            '-e', 'wg.static.known_pubkey',
+            '-e', 'wg.static.known_privkey',
+            '-e', 'wg.timestamp.nanoseconds',
+        ])
+        # static pubkey is unknown because Spub_i is not added to wg_keys.
+        self.assertIn('1\t%s\t0\t0\t%s' % (self.key_Spub_i, '356537872'), lines)
+        self.assertIn('13\t%s\t0\t0\t%s' % (self.key_Spub_i, '490514356'), lines)
+
+    def test_decrypt_initiation_ephemeral_only(self):
+        """Check for partial decryption using Epriv_i."""
+        lines = self.runOne([
+            '-ouat:wg_keys:"Public","%s"' % self.key_Spub_r,
+            '-Y', 'wg.type==1',
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.ephemeral.known_privkey',
+            '-e', 'wg.static',
+            '-e', 'wg.timestamp.nanoseconds',
+        ], keylog=[
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_i0,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_i1,
+        ])
+        # The current implementation tries to write as much decrypted data as
+        # possible, even if the full handshake cannot be derived.
+        self.assertIn('1\t1\t%s\t%s' % (self.key_Spub_i, ''), lines)
+        self.assertIn('13\t1\t%s\t%s' % (self.key_Spub_i, ''), lines)
+
+    def test_decrypt_full_initiator(self):
+        """
+        Check for full handshake decryption using Spriv_r + Epriv_i.
+        The public key Spub_r is provided via the key log as well.
+        """
+        lines = self.runOne([
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.ephemeral.known_privkey',
+            '-e', 'wg.static',
+            '-e', 'wg.timestamp.nanoseconds',
+            '-e', 'wg.handshake_ok',
+            '-e', 'icmp.type',
+            '-e', 'tcp.dstport',
+        ], keylog=[
+            '  REMOTE_STATIC_PUBLIC_KEY = %s' % self.key_Spub_r,
+            '  LOCAL_STATIC_PRIVATE_KEY = %s' % self.key_Spriv_i_alt,
+            '  LOCAL_EPHEMERAL_PRIVATE_KEY = %s' % self.key_Epriv_i0_alt,
+            '  LOCAL_EPHEMERAL_PRIVATE_KEY = %s' % self.key_Epriv_i1,
+        ])
+        self.assertIn('1\t1\t%s\t%s\t\t\t' % (self.key_Spub_i, '356537872'), lines)
+        self.assertIn('2\t0\t\t\t1\t\t', lines)
+        self.assertIn('3\t\t\t\t\t8\t', lines)
+        self.assertIn('4\t\t\t\t\t0\t', lines)
+        self.assertIn('13\t1\t%s\t%s\t\t\t' % (self.key_Spub_i, '490514356'), lines)
+        self.assertIn('14\t0\t\t\t1\t\t', lines)
+        self.assertIn('17\t\t\t\t\t\t443', lines)
+        self.assertIn('18\t\t\t\t\t\t49472', lines)
+
+    def test_decrypt_full_responder(self):
+        """Check for full handshake decryption using responder secrets."""
+        lines = self.runOne([
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.ephemeral.known_privkey',
+            '-e', 'wg.static',
+            '-e', 'wg.timestamp.nanoseconds',
+            '-e', 'wg.handshake_ok',
+            '-e', 'icmp.type',
+            '-e', 'tcp.dstport',
+        ], keylog=[
+            'REMOTE_STATIC_PUBLIC_KEY=%s' % self.key_Spub_i,
+            'LOCAL_STATIC_PRIVATE_KEY=%s' % self.key_Spriv_r,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_r0,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_r1,
+        ])
+        self.assertIn('1\t0\t%s\t%s\t\t\t' % (self.key_Spub_i, '356537872'), lines)
+        self.assertIn('2\t1\t\t\t1\t\t', lines)
+        self.assertIn('3\t\t\t\t\t8\t', lines)
+        self.assertIn('4\t\t\t\t\t0\t', lines)
+        self.assertIn('13\t0\t%s\t%s\t\t\t' % (self.key_Spub_i, '490514356'), lines)
+        self.assertIn('14\t1\t\t\t1\t\t', lines)
+        self.assertIn('17\t\t\t\t\t\t443', lines)
+        self.assertIn('18\t\t\t\t\t\t49472', lines)
+
+    def test_decrypt_psk_initiator(self):
+        """Check whether PSKs enable decryption for initiation keys."""
+        lines = self.runOne([
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.handshake_ok',
+        ], keylog=[
+            'REMOTE_STATIC_PUBLIC_KEY = %s' % self.key_Spub_r,
+            'LOCAL_STATIC_PRIVATE_KEY = %s' % self.key_Spriv_i,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_i2,
+            'PRESHARED_KEY=%s' % self.key_psk2,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_r3,
+            'PRESHARED_KEY=%s' % self.key_psk3,
+        ], pcap_file='wireguard-psk.pcap')
+        self.assertIn('2\t1', lines)
+        self.assertIn('4\t1', lines)
+
+    def test_decrypt_psk_responder(self):
+        """Check whether PSKs enable decryption for responder keys."""
+        lines = self.runOne([
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.handshake_ok',
+        ], keylog=[
+            'REMOTE_STATIC_PUBLIC_KEY=%s' % self.key_Spub_i,
+            'LOCAL_STATIC_PRIVATE_KEY=%s' % self.key_Spriv_r,
+            # Epriv_r2 needs psk2. This tests handling of duplicate ephemeral
+            # keys with multiple PSKs. It should not have adverse effects.
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_r2,
+            'PRESHARED_KEY=%s' % self.key_dummy,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_r2,
+            'PRESHARED_KEY=%s' % self.key_psk2,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_i3,
+            'PRESHARED_KEY=%s' % self.key_psk3,
+            # Epriv_i3 needs psk3, this tests that additional keys again have no
+            # bad side-effects.
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_i3,
+            'PRESHARED_KEY=%s' % self.key_dummy,
+        ], pcap_file='wireguard-psk.pcap')
+        self.assertIn('2\t1', lines)
+        self.assertIn('4\t1', lines)
+
+    def test_decrypt_psk_wrong_orderl(self):
+        """Check that the wrong order of lines indeed fail decryption."""
+        lines = self.runOne([
+            '-Tfields',
+            '-e', 'frame.number',
+            '-e', 'wg.handshake_ok',
+        ], keylog=[
+            'REMOTE_STATIC_PUBLIC_KEY=%s' % self.key_Spub_i,
+            'LOCAL_STATIC_PRIVATE_KEY=%s' % self.key_Spriv_r,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_r2,
+            'LOCAL_EPHEMERAL_PRIVATE_KEY=%s' % self.key_Epriv_i3,
+            'PRESHARED_KEY=%s' % self.key_psk2, # note: swapped with previous line
+            'PRESHARED_KEY=%s' % self.key_psk3,
+        ], pcap_file='wireguard-psk.pcap')
+        self.assertIn('2\t0', lines)
+        self.assertIn('4\t0', lines)

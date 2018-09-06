@@ -251,10 +251,14 @@ if( NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
 endif()
 
 if(APPLE AND EXISTS /usr/local/opt/qt5)
-	# Homebrew installs Qt5 (up to at least 5.9.1) in
-	# /usr/local/qt5, ensure it can be found by CMake since
-	# it is not in the default /usr/local prefix.
-	list(APPEND CMAKE_PREFIX_PATH "/usr/local/opt/qt5")
+	# Homebrew installs Qt5 (up to at least 5.11.0) in
+	# /usr/local/qt5. Ensure that it can be found by CMake
+	# since it is not in the default /usr/local prefix.
+	# Add it to PATHS so that it doesn't override the
+	# CMAKE_PREFIX_PATH environment variable.
+	# QT_FIND_PACKAGE_OPTIONS should be passed to find_package,
+	# e.g. find_package(Qt5Core ${QT_FIND_PACKAGE_OPTIONS})
+	set (QT_FIND_PACKAGE_OPTIONS PATHS /usr/local/opt/qt5)
 endif()
 
 # Always enable position-independent code when compiling, even for
@@ -265,6 +269,13 @@ endif()
 # - PIE is wanted (-pie) and you want to add -fPIC/-fPIE automatically.
 # This option only has an effect on CMake >= 2.8.9
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Path to our generated executables (or wrapper scripts)
+if(WIN32)
+	set(WS_PROGRAM_PATH ./run/$<CONFIG>)
+else()
+	set(WS_PROGRAM_PATH ./run)
+endif()
 
 if( CMAKE_C_COMPILER_ID MATCHES "MSVC")
 	if ((MSVC_VERSION LESS "1900") OR (MSVC_VERSION GREATER_EQUAL "2000"))
@@ -282,17 +293,11 @@ if( CMAKE_C_COMPILER_ID MATCHES "MSVC")
 		#                                   resolution of symbols, add Psapi.lib to the TARGETLIBS macro and compile the program
 		#                                   with -DPSAPI_VERSION=1.To use run-time dynamic linking, load Psapi.dll.
 		#                                   http://msdn.microsoft.com/en-us/library/windows/desktop/ms683219(v=vs.85).aspx
-		# -DBUILD_WINDOWS                   Starting from VS2013, GetVersionEx is deprecated and we are recommended to use
-		#                                   VerifyVersionInfo instead
-		#                                   http://msdn.microsoft.com/en-us/library/windows/desktop/ms724429(v=vs.85).aspx
-		#                                   http://msdn.microsoft.com/en-us/library/windows/desktop/ms725491(v=vs.85).aspx
-		#                                   To continue to use GetVersionEx, we can define BUILD_WINDOWS
 		# -D_ALLOW_KEYWORD_MACROS           For VS2012 onwards the, C++ STL does not permit macro redefinitions of keywords
 		#                                   (see http://msdn.microsoft.com/en-us/library/bb531344(v=vs.110).aspx)
 		#                                   This definition prevents the complaint about the redefinition of inline by WinPCap
 		#                                   in pcap-stdinc.h when compiling C++ files, e.g. the Qt UI
 		/DPSAPI_VERSION=1
-		/DBUILD_WINDOWS
 		/D_ALLOW_KEYWORD_MACROS
 	)
 
@@ -470,6 +475,7 @@ else() # ! MSVC
 		# -O<X> and -g get set by the CMAKE_BUILD_TYPE
 		-Wall
 		-Wextra
+		-Wextra-semi
 		-Wendif-labels
 		-Wpointer-arith
 		-Wformat-security
@@ -548,7 +554,7 @@ else() # ! MSVC
 	set(CXX_WARN_FLAGS
 	)
 
-	find_package(Qt5Core)  # Needed to check for Qt version
+	find_package(Qt5Core ${QT_FIND_PACKAGE_OPTIONS}) # Needed to check for Qt version
 	if (Qt5Core_VERSION VERSION_GREATER 5.8)
 		# The Qt headers in version 5.8 and older generate a ton of shortening
 		# errors on 64-bit systems so only enable this for version 5.9 and greater.
@@ -907,6 +913,7 @@ if(BUILD_wireshark)
 		set( QT5_BASE_PATH "$ENV{QT5_BASE_DIR}" )
 		set( CMAKE_PREFIX_PATH "${QT5_BASE_PATH}" )
 	endif()
+	list (INSERT QT_FIND_PACKAGE_OPTIONS 0 REQUIRED)
 	set(PACKAGELIST ${PACKAGELIST}
 		Qt5Core
 		Qt5LinguistTools
@@ -915,19 +922,19 @@ if(BUILD_wireshark)
 		Qt5Svg
 		Qt5Widgets
 	)
-	set(Qt5Core_OPTIONS REQUIRED)
-	set(Qt5LinguistTools_OPTIONS REQUIRED)
-	set(Qt5Multimedia_OPTIONS REQUIRED)
-	set(Qt5PrintSupport_OPTIONS REQUIRED)
-	set(Qt5Svg_OPTIONS REQUIRED)
-	set(Qt5Widgets_OPTIONS REQUIRED)
+	set(Qt5Core_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
+	set(Qt5LinguistTools_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
+	set(Qt5Multimedia_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
+	set(Qt5PrintSupport_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
+	set(Qt5Svg_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
+	set(Qt5Widgets_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
 	if (APPLE)
 		set(PACKAGELIST ${PACKAGELIST} Qt5MacExtras)
-		set(Qt5MacExtras_OPTIONS REQUIRED)
+		set(Qt5MacExtras_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
 	endif()
 	if( WIN32 )
 		set(PACKAGELIST ${PACKAGELIST} Qt5WinExtras)
-		set(Qt5WinExtras_OPTIONS REQUIRED)
+		set(Qt5WinExtras_OPTIONS ${QT_FIND_PACKAGE_OPTIONS})
 	endif()
 endif()
 
@@ -1207,6 +1214,30 @@ if (Qt5Widgets_FOUND)
 		# Squelch moc verbose "nothing to do" output
 		set(MOC_OPTIONS -nn)
 	endif()
+
+	# CMake uses qmake to find Qt4. It relies on Qt's CMake modules
+	# to find Qt5. This means that we can't assume that the qmake
+	# in our PATH is the correct one. We can fetch qmake's location
+	# from Qt5::qmake, which is is defined in Qt5CoreConfigExtras.cmake.
+	get_target_property(QT_QMAKE_EXECUTABLE Qt5::qmake IMPORTED_LOCATION)
+	get_filename_component(_qt_bin_path "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+	set(QT_BIN_PATH "${_qt_bin_path}" CACHE INTERNAL
+		"Path to qmake, macdeployqt, windeployqt, and other Qt utilities."
+	)
+	# Use qmake to find windeployqt and macdeployqt. Ideally one of
+	# the modules in ${QTDIR}/lib/cmake would do this for us.
+	if(WIN32)
+		find_program(QT_WINDEPLOYQT_EXECUTABLE windeployqt
+			HINTS "${QT_BIN_PATH}"
+			DOC "Path to the windeployqt utility."
+		)
+	elseif(APPLE)
+		find_program(QT_MACDEPLOYQT_EXECUTABLE macdeployqt
+			HINTS "${QT_BIN_PATH}"
+			DOC "Path to the macdeployqt utility."
+		)
+	endif()
+
 endif()
 
 if(ENABLE_CHECKHF_CONFLICT)
@@ -1256,10 +1287,19 @@ include( UseCheckAPI )
 # Windows: $DESTDIR/extcap
 # macOS app bundle: Wireshark.app/Contents/Resources/share/wireshark/extcap
 if (WIN32)
-	set(EXTCAP_DIR "extcap" CACHE INTERNAL "The extcap dir")
+	set(EXTCAP_INSTALL_LIBDIR "extcap" CACHE INTERNAL "The extcap dir")
 else ()
-	set(EXTCAP_DIR "${CMAKE_INSTALL_FULL_LIBDIR}/${CPACK_PACKAGE_NAME}/extcap" CACHE INTERNAL "The extcap dir")
+	set(EXTCAP_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/extcap" CACHE INTERNAL "The extcap dir")
 endif()
+
+# Directory where plugins and Lua dissectors can be found.
+if(WIN32)
+	set(PLUGIN_INSTALL_LIBDIR "plugins" CACHE INTERNAL "The plugin dir")
+else()
+	set(PLUGIN_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/plugins" CACHE INTERNAL "The plugin dir")
+endif()
+set(PLUGIN_INSTALL_VERSION_LIBDIR "${PLUGIN_INSTALL_LIBDIR}/${PROJECT_RELEASE_VERSION}")
+set(PLUGIN_VERSION_DIR "plugins/${PROJECT_RELEASE_VERSION}")
 
 add_subdirectory( capchild )
 add_subdirectory( caputils )
@@ -1269,7 +1309,7 @@ add_subdirectory( docbook EXCLUDE_FROM_ALL )
 add_subdirectory( epan )
 add_subdirectory( extcap )
 add_subdirectory( randpkt_core )
-add_subdirectory( tools )
+add_subdirectory( tools/lemon )
 add_subdirectory( ui )
 add_subdirectory( wiretap )
 add_subdirectory( writecap )
@@ -1279,7 +1319,12 @@ add_subdirectory( writecap )
 # application bundle, and on UNIX in general if
 # WIRESHARK_RUN_FROM_BUILD_DIRECTORY is set.
 if(ENABLE_APPLICATION_BUNDLE)
-	set(_datafile_dir "${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Resources/share/wireshark")
+	if(CMAKE_CFG_INTDIR STREQUAL ".")
+		set(_datafile_dir "${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Resources/share/wireshark")
+	else()
+		# Xcode
+		set(_datafile_dir "${CMAKE_BINARY_DIR}/run/${CMAKE_CFG_INTDIR}/Wireshark.app/Contents/Resources/share/wireshark")
+	endif()
 elseif(NOT CMAKE_CFG_INTDIR STREQUAL ".")
 	# Visual Studio, Xcode, etc.
 	set(_datafile_dir "${CMAKE_BINARY_DIR}/run/${CMAKE_CFG_INTDIR}")
@@ -1302,23 +1347,13 @@ if(BUILD_wireshark AND QT_FOUND)
 	add_subdirectory( ui/qt )
 endif()
 
-# Directory where plugins and Lua dissectors can be found.
-set(PLUGIN_VERSION_DIR "plugins/${PROJECT_RELEASE_VERSION}")
-set(PLUGIN_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/${PLUGIN_VERSION_DIR}")
-# Used by the WiresharkConfig.cmake.in module
-if (WIN32)
-	set(PLUGIN_INSTALL_DIR "${PLUGIN_VERSION_DIR}")
-else ()
-	set(PLUGIN_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${PLUGIN_INSTALL_LIBDIR}")
-endif()
-
 # Location of our plugins. PLUGIN_DIR should allow running
 # from the build directory similar to DATAFILE_DIR above.
 if(ENABLE_PLUGINS)
 	# Target platform locations
 	# UN*X in general, including macOS if not building an app bundle:
 	# $DESTDIR/lib/wireshark/plugins/$VERSION
-	# Windows: $DESTDIR/wireshark/plubins/$VERSION
+	# Windows: $DESTDIR/wireshark/plugins/$VERSION
 	# macOS app bundle: Wireshark.app/Contents/PlugIns/wireshark
 	set(HAVE_PLUGINS 1)
 	add_custom_target(plugins)
@@ -1358,7 +1393,14 @@ else()
 endif()
 
 if(ENABLE_APPLICATION_BUNDLE)
-	set(_plugin_dir "${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/PlugIns/wireshark/${PROJECT_RELEASE_VERSION}")
+	if(CMAKE_CFG_INTDIR STREQUAL ".")
+		set(_plugin_dir "${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/PlugIns/wireshark/${PROJECT_RELEASE_VERSION}")
+	else()
+	  # Xcode
+		set(_plugin_dir "${CMAKE_BINARY_DIR}/run/$<CONFIG>/Wireshark.app/Contents/PlugIns/wireshark/${PROJECT_RELEASE_VERSION}")
+	endif()
+elseif(WIN32 AND NOT CMAKE_CFG_INTDIR STREQUAL ".")
+	set(_plugin_dir "${CMAKE_BINARY_DIR}/run/$<CONFIG>/${PLUGIN_VERSION_DIR}")
 else()
 	set(_plugin_dir "${DATAFILE_DIR}/${PLUGIN_VERSION_DIR}")
 endif()
@@ -1388,12 +1430,13 @@ set_target_properties(version PROPERTIES FOLDER "Auxiliary")
 set( configure_input "Built with CMake ${CMAKE_VERSION}" )
 configure_file(${CMAKE_SOURCE_DIR}/cmakeconfig.h.in ${CMAKE_BINARY_DIR}/config.h)
 
+configure_file(${CMAKE_SOURCE_DIR}/ws_version.h.in ${CMAKE_BINARY_DIR}/ws_version.h)
+
 set( prefix "${CMAKE_INSTALL_PREFIX}" )
 set( exec_prefix "\${prefix}" )
 set( libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}" )
 set( includedir  "\${prefix}/include" )
 set( plugindir "\${libdir}/wireshark/${PLUGIN_VERSION_DIR}" )
-set( VERSION_RELEASE "${PROJECT_RELEASE_VERSION}" )
 
 # Doxygen variables
 file(GLOB TOP_LEVEL_SOURCE_LIST *.c *.cpp *.h)
@@ -1785,7 +1828,7 @@ if(WIN32)
 		DOC "Path to the 7z utility."
 	)
 	if(ZIP_EXECUTABLE)
-		add_custom_target(pdb_zip_package)
+		add_custom_target(pdb_zip_package COMMENT "This packages .PDBs but will not create them.")
 		set_target_properties(pdb_zip_package PROPERTIES FOLDER "Packaging")
 		set(_pdb_zip "${CMAKE_BINARY_DIR}/Wireshark-pdb-${WIRESHARK_TARGET_PLATFORM}-${VERSION}.zip")
 		file(TO_NATIVE_PATH "${_pdb_zip}" _pdb_zip_win)
@@ -1798,7 +1841,6 @@ if(WIN32)
 				${PLUGIN_VERSION_DIR}/wiretap/*.pdb
 			WORKING_DIRECTORY "${_dll_output_dir}"
 		)
-		add_dependencies(pdb_zip_package epan)
 	endif()
 endif(WIN32)
 
@@ -1936,13 +1978,6 @@ foreach(_data_file ${_data_files})
 	list(APPEND copy_data_files_depends "${DATAFILE_DIR}/${_data_file}")
 endforeach()
 
-add_custom_command(
-	OUTPUT "${DATAFILE_DIR}/dtds" "${DATAFILE_DIR}/diameter" "${DATAFILE_DIR}/radius"
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/dtds"
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/diameter"
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/radius"
-)
-
 file(GLOB _dtds_src_files RELATIVE "${CMAKE_SOURCE_DIR}" "dtds/*.dtd")
 
 set (_dtds_data_files)
@@ -1952,11 +1987,12 @@ endforeach()
 
 add_custom_command(
 	OUTPUT ${_dtds_data_files}
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/dtds"
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${_dtds_src_files}
 		"${DATAFILE_DIR}/dtds"
 	VERBATIM
-	DEPENDS "${DATAFILE_DIR}/dtds"
+	DEPENDS ${_dtds_src_files}
 	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 
@@ -1972,11 +2008,12 @@ endforeach()
 
 add_custom_command(
 	OUTPUT ${_diameter_data_files}
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/diameter"
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${_diameter_src_files}
 		"${DATAFILE_DIR}/diameter"
 	VERBATIM
-	DEPENDS "${DATAFILE_DIR}/diameter"
+	DEPENDS ${_diameter_src_files}
 	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 
@@ -1994,11 +2031,12 @@ endforeach()
 
 add_custom_command(
 	OUTPUT ${_radius_data_files}
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/radius"
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${_radius_src_files}
 		"${DATAFILE_DIR}/radius"
 	VERBATIM
-	DEPENDS "${DATAFILE_DIR}/radius"
+	DEPENDS ${_radius_src_files}
 	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 
@@ -2115,6 +2153,7 @@ if(BUILD_wireshark AND QT_FOUND)
 		ui
 		capchild
 		caputils
+		wiretap
 		${QT_LIBRARIES}
 		${GTHREAD2_LIBRARIES}
 		wscodecs
@@ -2127,7 +2166,7 @@ if(BUILD_wireshark AND QT_FOUND)
 		${WIN_VERSION_LIBRARY}
 	)
 
-	add_executable(wireshark WIN32 MACOSX_BUNDLE wireshark-qt.cpp ${wireshark_FILES} ${EXTRA_BUNDLE_FILES})
+	add_executable(wireshark WIN32 MACOSX_BUNDLE ${wireshark_FILES} ${EXTRA_BUNDLE_FILES})
 	add_dependencies(wireshark version)
 	set(PROGLIST ${PROGLIST} wireshark)
 	if(CMAKE_VERSION VERSION_LESS "2.8.12"
@@ -2159,13 +2198,16 @@ if(BUILD_wireshark AND QT_FOUND)
 			wireshark PROPERTIES
 				MACOSX_BUNDLE_INFO_PLIST ${CMAKE_BINARY_DIR}/packaging/macosx/Info.plist
 		)
-		# Add a wrapper script which opens the bundle. This adds
-		# convenience but makes debugging more difficult.
-		file(REMOVE ${CMAKE_BINARY_DIR}/run/wireshark)
-		file(WRITE ${CMAKE_BINARY_DIR}/run/wireshark "#!/bin/sh\n")
-		file(APPEND ${CMAKE_BINARY_DIR}/run/wireshark "# Generated by ${CMAKE_CURRENT_LIST_FILE}\n")
-		file(APPEND ${CMAKE_BINARY_DIR}/run/wireshark "exec ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/MacOS/Wireshark \"\$\@\"\n")
-		execute_process(COMMAND chmod a+x ${CMAKE_BINARY_DIR}/run/wireshark)
+		if(CMAKE_CFG_INTDIR STREQUAL ".")
+			# Add a wrapper script which opens the bundle. This adds
+			# convenience but makes debugging more difficult.
+			# It is not created if using Xcode
+			file(REMOVE ${CMAKE_BINARY_DIR}/run/wireshark)
+			file(WRITE ${CMAKE_BINARY_DIR}/run/wireshark "#!/bin/sh\n")
+			file(APPEND ${CMAKE_BINARY_DIR}/run/wireshark "# Generated by ${CMAKE_CURRENT_LIST_FILE}\n")
+			file(APPEND ${CMAKE_BINARY_DIR}/run/wireshark "exec ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/MacOS/Wireshark \"\$\@\"\n")
+			execute_process(COMMAND chmod a+x ${CMAKE_BINARY_DIR}/run/wireshark)
+		endif()
 	endif()
 
 	target_link_libraries(wireshark ${wireshark_LIBS})
@@ -2175,41 +2217,23 @@ if(BUILD_wireshark AND QT_FOUND)
 		BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
 	)
 
-	if(WIN32 AND Qt5Core_FOUND)
-		# Use windeployqt to copy our required DLLs to the run path.
-		# Ideally one of the modules in ${QTDIR}/lib/cmake would expose
-		# the path to windeployqt. For that matter having a reliable
-		# path to qmake would be *amazingly convenient*. We don't have
-		# either of those so we try to discover the path via Qt5Core.
-		# http://stackoverflow.com/questions/24650936/qt5-with-cmake-how-to-find-qt-translations-dir
-
-		get_target_property(_qmake_location Qt5::qmake IMPORTED_LOCATION)
-		get_filename_component(_qt_bin_path "${_qmake_location}" DIRECTORY)
-		find_program(QT_WINDEPLOYQT_EXECUTABLE windeployqt
-			HINTS "${_qmake_location}"
-			DOC "Path to the windeployqt utility."
+	if(QT_WINDEPLOYQT_EXECUTABLE)
+		add_custom_target(copy_qt_dlls ALL)
+		set_target_properties(copy_qt_dlls PROPERTIES FOLDER "Copy Tasks")
+		# Will we ever need to use --debug? Windeployqt seems to
+		# be smart enough to copy debug DLLs when needed.
+		add_custom_command(TARGET copy_qt_dlls
+			POST_BUILD
+			COMMAND set "PATH=${QT_BIN_PATH};%PATH%"
+			COMMAND "${QT_WINDEPLOYQT_EXECUTABLE}"
+				$<$<CONFIG:Debug>:--debug>
+				$<$<NOT:$<CONFIG:Debug>>:--release>
+				--no-compiler-runtime
+				--verbose 10
+				"$<TARGET_FILE:wireshark>"
 		)
-		if(QT_WINDEPLOYQT_EXECUTABLE)
-			set(QT_BIN_PATH "${_qt_bin_path}" CACHE INTERNAL
-				"Path to qmake, windeployqt, and other Qt utilities."
-			)
-			add_custom_target(copy_qt_dlls ALL)
-			set_target_properties(copy_qt_dlls PROPERTIES FOLDER "Copy Tasks")
-			# Will we ever need to use --debug? Windeployqt seems to
-			# be smart enough to copy debug DLLs when needed.
-			add_custom_command(TARGET copy_qt_dlls
-				POST_BUILD
-				COMMAND set "PATH=${QT_BIN_PATH};%PATH%"
-				COMMAND "${QT_WINDEPLOYQT_EXECUTABLE}"
-					$<$<CONFIG:Debug>:--debug>
-					$<$<NOT:$<CONFIG:Debug>>:--release>
-					--no-compiler-runtime
-					--verbose 10
-					"$<TARGET_FILE:wireshark>"
-			)
-			add_dependencies(copy_qt_dlls wireshark)
-		endif()
-	endif(WIN32 AND Qt5Core_FOUND)
+		add_dependencies(copy_qt_dlls wireshark)
+	endif(QT_WINDEPLOYQT_EXECUTABLE)
 endif()
 
 # Common properties for CLI executables
@@ -2222,16 +2246,23 @@ macro(set_extra_executable_properties _executable _folder)
 	set(PROGLIST ${PROGLIST} ${_executable})
 
 	if(ENABLE_APPLICATION_BUNDLE)
-		set_target_properties(${_executable} PROPERTIES
-			RUNTIME_OUTPUT_DIRECTORY run/Wireshark.app/Contents/MacOS
-		)
-		# Add a wrapper script which runs each executable from the
-		# correct location. This adds convenience but makes debugging
-		# more difficult.
-		file(REMOVE ${CMAKE_BINARY_DIR}/run/${_executable})
-		file(WRITE ${CMAKE_BINARY_DIR}/run/${_executable} "#!/bin/sh\n")
-		file(APPEND ${CMAKE_BINARY_DIR}/run/${_executable} "exec ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/MacOS/${_executable} \"\$\@\"\n")
-		execute_process(COMMAND chmod a+x ${CMAKE_BINARY_DIR}/run/${_executable})
+		if(NOT CMAKE_CFG_INTDIR STREQUAL ".")
+			# Xcode
+			set_target_properties(${_executable} PROPERTIES
+				RUNTIME_OUTPUT_DIRECTORY run/$<CONFIG>/Wireshark.app/Contents/MacOS
+			)
+		else ()
+			set_target_properties(${_executable} PROPERTIES
+				RUNTIME_OUTPUT_DIRECTORY run/Wireshark.app/Contents/MacOS
+			)
+			# Add a wrapper script which runs each executable from the
+			# correct location. This adds convenience but makes debugging
+			# more difficult.
+			file(REMOVE ${CMAKE_BINARY_DIR}/run/${_executable})
+			file(WRITE ${CMAKE_BINARY_DIR}/run/${_executable} "#!/bin/sh\n")
+			file(APPEND ${CMAKE_BINARY_DIR}/run/${_executable} "exec ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/MacOS/${_executable} \"\$\@\"\n")
+			execute_process(COMMAND chmod a+x ${CMAKE_BINARY_DIR}/run/${_executable})
+		endif()
 	endif()
 endmacro()
 
@@ -2244,6 +2275,7 @@ if(BUILD_tshark)
 		ui
 		capchild
 		caputils
+		wiretap
 		${LIBEPAN_LIBS}
 		${APPLE_CORE_FOUNDATION_LIBRARY}
 		${APPLE_SYSTEM_CONFIGURATION_LIBRARY}
@@ -2267,6 +2299,7 @@ endif()
 if(BUILD_tfshark)
 	set(tfshark_LIBS
 		ui
+		wiretap
 		${LIBEPAN_LIBS}
 		${APPLE_CORE_FOUNDATION_LIBRARY}
 		${APPLE_SYSTEM_CONFIGURATION_LIBRARY}
@@ -2288,6 +2321,7 @@ if(BUILD_rawshark AND PCAP_FOUND)
 	set(rawshark_LIBS
 		caputils
 		ui
+		wiretap
 		${LIBEPAN_LIBS}
 		${APPLE_CORE_FOUNDATION_LIBRARY}
 		${APPLE_SYSTEM_CONFIGURATION_LIBRARY}
@@ -2308,6 +2342,7 @@ if(BUILD_sharkd)
 	set(sharkd_LIBS
 		ui
 		wscodecs
+		wiretap
 		${LIBEPAN_LIBS}
 		${APPLE_CORE_FOUNDATION_LIBRARY}
 		${APPLE_SYSTEM_CONFIGURATION_LIBRARY}
@@ -2328,6 +2363,7 @@ endif()
 if(BUILD_dftest)
 	set(dftest_LIBS
 		ui
+		wiretap
 		${LIBEPAN_LIBS}
 	)
 	set(dftest_FILES
@@ -2363,6 +2399,7 @@ endif()
 
 if(BUILD_fuzzshark)
 	set(fuzzshark_LIBS
+		wiretap
 		${LIBEPAN_LIBS}
 	)
 	set(fuzzshark_FILES
@@ -2532,6 +2569,10 @@ if(BUILD_dumpcap AND PCAP_FOUND)
 				OWNER_READ OWNER_WRITE OWNER_EXECUTE
 				GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 	)
+	if(ENABLE_DUMPCAP_GROUP)
+		install(CODE "execute_process(COMMAND chgrp ${DUMPCAP_INSTALL_GROUP} ${CMAKE_INSTALL_FULL_BINDIR}/dumpcap)")
+		install(CODE "execute_process(COMMAND chmod o-x ${CMAKE_INSTALL_FULL_BINDIR}/dumpcap)")
+	endif()
 	if(DUMPCAP_INSTALL_OPTION STREQUAL "capabilities")
 		install( CODE "execute_process(
 			COMMAND
@@ -2629,9 +2670,6 @@ if(ENABLE_APPLICATION_BUNDLE)
 					${CMAKE_SOURCE_DIR}/packaging/macosx/ChmodBPF
 					${CMAKE_BINARY_DIR}/run/ChmodBPF
 		COMMAND ${CMAKE_COMMAND} -E copy_directory
-					${CMAKE_SOURCE_DIR}/packaging/macosx/Resources
-					${CMAKE_BINARY_DIR}/run/Resources
-		COMMAND ${CMAKE_COMMAND} -E copy_directory
 					${CMAKE_SOURCE_DIR}/packaging/macosx/Scripts
 					${CMAKE_BINARY_DIR}/run/Scripts
 		COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -2662,6 +2700,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	find_program(RPMBUILD_EXECUTABLE rpmbuild)
+	find_program(DPKG_BUILDPACKAGE_EXECUTABLE dpkg-buildpackage)
 	find_program(GIT_EXECUTABLE git)
 endif()
 
@@ -2733,7 +2772,6 @@ if(RPMBUILD_EXECUTABLE)
 
 	# XXX Replace with the "dist" target?
 	set(_export_tarball "${CPACK_PACKAGE_NAME}-${_git_description}.tar.xz")
-	MESSAGE(STATUS "set(_export_tarball: ${_export_tarball}")
 	add_custom_command(
 		OUTPUT "${CMAKE_BINARY_DIR}/packaging/rpm/SOURCES/${_export_tarball}"
 		COMMAND ./tools/git-export-release.sh
@@ -2755,7 +2793,15 @@ if(RPMBUILD_EXECUTABLE)
 	)
 endif()
 
+if(DPKG_BUILDPACKAGE_EXECUTABLE)
+	add_custom_target(deb-package
+		COMMAND ${DPKG_BUILDPACKAGE_EXECUTABLE} -us -uc
+		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+	)
+endif()
+
 set(CLEAN_C_FILES
+	${dumpcap_FILES}
 	${wireshark_FILES}
 	${tshark_FILES}
 	${rawshark_FILES}
@@ -2808,6 +2854,7 @@ set(SHARK_PUBLIC_HEADERS
 	ws_diag_control.h
 	ws_symbol_export.h
 	version_info.h
+	${CMAKE_BINARY_DIR}/ws_version.h
 )
 
 if(NOT WIN32)
@@ -2870,22 +2917,50 @@ install(
 	PATTERN "Makefile.*" EXCLUDE
 )
 
-set(CMAKE_INSTALL_MODULES_DIR ${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME})
-configure_file("${CMAKE_MODULE_PATH}/WiresharkConfig.cmake.in" "${CMAKE_BINARY_DIR}/WiresharkConfig.cmake" @ONLY)
-configure_file("${CMAKE_MODULE_PATH}/WiresharkConfigVersion.cmake.in" "${CMAKE_BINARY_DIR}/WiresharkConfigVersion.cmake" @ONLY)
+set(CMAKE_INSTALL_MODULES_DIR "${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/cmake")
 install(
 	FILES
 		${CMAKE_MODULE_PATH}/FindGLIB2.cmake
-		${CMAKE_MODULE_PATH}/FindWireshark.cmake
 		${CMAKE_MODULE_PATH}/FindWSWinLibs.cmake
 		${CMAKE_MODULE_PATH}/UseAsn2Wrs.cmake
 		${CMAKE_MODULE_PATH}/LocatePythonModule.cmake
 		${CMAKE_MODULE_PATH}/UseMakePluginReg.cmake
-		${CMAKE_BINARY_DIR}/WiresharkConfig.cmake
-		${CMAKE_BINARY_DIR}/WiresharkConfigVersion.cmake
 	DESTINATION
 		${CMAKE_INSTALL_MODULES_DIR}
 )
+
+include(CMakePackageConfigHelpers)
+
+configure_package_config_file(WiresharkConfig.cmake.in
+	${CMAKE_BINARY_DIR}/WiresharkConfig.cmake
+	INSTALL_DESTINATION ${CMAKE_INSTALL_MODULES_DIR}
+	PATH_VARS
+		CMAKE_INSTALL_LIBDIR
+		CMAKE_INSTALL_INCLUDEDIR
+		PLUGIN_INSTALL_VERSION_LIBDIR
+		EXTCAP_INSTALL_LIBDIR
+)
+
+write_basic_package_version_file(
+	${CMAKE_BINARY_DIR}/WiresharkConfigVersion.cmake
+	COMPATIBILITY AnyNewerVersion
+)
+
+# XXX On Windows wsutil depends on a CMake zlib target for which there are no
+# exports.
+if(NOT WIN32)
+	install(
+		FILES
+			${CMAKE_BINARY_DIR}/WiresharkConfig.cmake
+			${CMAKE_BINARY_DIR}/WiresharkConfigVersion.cmake
+		DESTINATION
+			${CMAKE_INSTALL_MODULES_DIR}
+	)
+
+	install(EXPORT WiresharkTargets
+		DESTINATION ${CMAKE_INSTALL_MODULES_DIR}
+	)
+endif()
 
 if (DOXYGEN_EXECUTABLE)
 	# API reference
@@ -2923,27 +2998,39 @@ set_target_properties(test-programs PROPERTIES
 enable_testing()
 # We could try to build this list dynamically, but given that we tend to
 # go years between adding suites just run
-#     test/test.py --list-suites | sort
+#     test/test.py --list-groups | sort
 # and paste the output here.
-set(_test_suite_list
+set(_test_group_list
 	suite_capture
 	suite_clopts
 	suite_decryption
-	suite_dfilter
+	suite_dfilter.group_bytes_ether
+	suite_dfilter.group_bytes_ipv6
+	suite_dfilter.group_bytes_type
+	suite_dfilter.group_double
+	suite_dfilter.group_integer
+	suite_dfilter.group_integer_1byte
+	suite_dfilter.group_ipv4
+	suite_dfilter.group_membership
+	suite_dfilter.group_range_method
+	suite_dfilter.group_scanner
+	suite_dfilter.group_string_type
+	suite_dfilter.group_stringz
+	suite_dfilter.group_time_relative
+	suite_dfilter.group_time_type
+	suite_dfilter.group_tvb
+	suite_dfilter.group_uint64
 	suite_dissection
 	suite_fileformats
+	suite_follow
 	suite_io
 	suite_mergecap
 	suite_nameres
 	suite_text2pcap
+	suite_sharkd
 	suite_unittests
 	suite_wslua
 )
-if(WIN32)
-	set(_test_suite_program_path ./run/$<CONFIG>)
-else()
-	set(_test_suite_program_path ./run)
-endif()
 
 # We don't currently handle spaces in arguments. On Windows this
 # means that you will probably have to pass in an interface index
@@ -2951,17 +3038,17 @@ endif()
 set(TEST_EXTRA_ARGS "" CACHE STRING "Extra arguments to pass to test/test.py")
 separate_arguments(TEST_EXTRA_ARGS)
 
-foreach(_suite_name ${_test_suite_list})
+foreach(_group_name ${_test_group_list})
 	add_test(
-		NAME ${_suite_name}
+		NAME ${_group_name}
 		COMMAND ${CMAKE_COMMAND} -E env PYTHONIOENCODING=UTF-8
 			${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test.py
 			--verbose
-			--program-path ${_test_suite_program_path}
+			--program-path ${WS_PROGRAM_PATH}
 			${TEST_EXTRA_ARGS}
-			${_suite_name}
+			${_group_name}
 		)
-	set_tests_properties(${_suite_name} PROPERTIES TIMEOUT 600)
+	set_tests_properties(${_group_name} PROPERTIES TIMEOUT 600)
 endforeach()
 
 if (GIT_EXECUTABLE)
@@ -3023,9 +3110,19 @@ if(SHELLCHECK_EXECUTABLE)
 	# --external-sources requires 0.4.0 or later.
 	add_custom_command(TARGET shellcheck POST_BUILD
 		COMMAND shellcheck --external-sources
+			image/stock_icons/svg-to-png.sh
+			packaging/macosx/osx-app.sh.in
+			packaging/macosx/osx-dmg.sh.in
+			tools/compress-pngs.sh
+			tools/debian-setup.sh
+			tools/git-export-release.sh
 			tools/fuzz-test.sh
+			tools/gen-bugnote
+			tools/pre-commit
 			tools/randpkt-test.sh
+			tools/release-update-debian-soversions.sh
 			tools/test-captures.sh
+			tools/update-tx
 			tools/valgrind-wireshark.sh
 		WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 	)

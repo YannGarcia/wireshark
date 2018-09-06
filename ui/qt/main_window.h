@@ -85,7 +85,7 @@ class WelcomePage;
 class PacketList;
 class ProtoTree;
 class WirelessFrame;
-class DragDropToolBar;
+class FilterExpressionToolBar;
 
 class QAction;
 class QActionGroup;
@@ -186,7 +186,7 @@ private:
     QPointer<QWidget> freeze_focus_;
     QMap<QAction *, ts_type> td_actions;
     QMap<QAction *, ts_precision> tp_actions;
-    DragDropToolBar *filter_expression_toolbar_;
+    FilterExpressionToolBar *filter_expression_toolbar_;
     bool was_maximized_;
 
     /* the following values are maintained so that the capture file name and status
@@ -269,8 +269,6 @@ private:
     void goToConversationFrame(bool go_next);
     void colorizeWithFilter(QByteArray filter, int color_number = -1);
 
-    void createByteViewDialog();
-
 signals:
     void setCaptureFile(capture_file *cf);
     void setDissectedCaptureFile(capture_file *cf);
@@ -313,26 +311,23 @@ public slots:
     void setTitlebarForCaptureFile();
     void setWSWindowTitle(QString title = QString());
 
+#ifdef HAVE_LIBPCAP
     void captureCapturePrepared(capture_session *);
     void captureCaptureUpdateStarted(capture_session *);
     void captureCaptureUpdateFinished(capture_session *);
     void captureCaptureFixedFinished(capture_session *cap_session);
     void captureCaptureFailed(capture_session *);
+#endif
 
     void captureFileOpened();
     void captureFileReadFinished();
     void captureFileClosing();
     void captureFileClosed();
 
-    void filterExpressionsChanged();
-    static gboolean filter_expression_add_action(const void *key, void *value, void *user_data);
-
     void launchRLCGraph(bool channelKnown, guint16 ueid, guint8 rlcMode,
                         guint16 channelType, guint16 channelId, guint8 direction);
 
     void on_actionViewFullScreen_triggered(bool checked);
-
-    int uatRowIndexForFilterExpression(QString label, QString expression);
 
 private slots:
 
@@ -380,14 +375,6 @@ private slots:
     QMenu * searchSubMenu(QString objectName);
     void activatePluginIFToolbar(bool);
 
-    void filterToolbarCustomMenuHandler(const QPoint& globalPos);
-    void filterToolbarShowPreferences();
-    void filterToolbarEditFilter();
-    void filterToolbarDisableFilter();
-    void filterToolbarRemoveFilter();
-    void filterToolbarActionMoved(QAction * action, int oldPos, int newPos);
-    void filterDropped(QString description, QString filter);
-
     void startInterfaceCapture(bool valid, const QString capture_filter);
 
     void applyGlobalCommandLineOptions();
@@ -395,7 +382,9 @@ private slots:
 
     void on_actionDisplayFilterExpression_triggered();
     void on_actionNewDisplayFilterExpression_triggered();
-    void displayFilterButtonClicked();
+    void onFilterSelected(QString, bool);
+    void onFilterPreferences();
+    void onFilterEdit(int uatIndex);
 
     // Handle FilterAction signals
     void queuedFilterAction(QString filter, FilterAction::Action action, FilterAction::ActionType type);
