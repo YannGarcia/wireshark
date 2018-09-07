@@ -33,8 +33,8 @@
 #include <epan/expert.h>
 #include <epan/prefs.h>
 
-void proto_register_gn(void);
-void proto_reg_handoff_gn(void);
+void proto_register_btp(void);
+void proto_reg_handoff_btp(void);
 
 #define MIN_PDU_SIZE 4
 
@@ -115,6 +115,7 @@ dissect_btp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 void
 proto_register_btp(void)
 {
+  /*module_t *btp_module = NULL;*/
 
   /* Setup list of header fields */
   static hf_register_info hf[] = {
@@ -140,12 +141,15 @@ proto_register_btp(void)
 				       "BTP",                      /* short name */
 				       "btp"                       /* abbrev     */
 				       );
-  register_dissector("btp", dissect_btp, proto_btp);
 
   /* Required function calls to register the header fields and subtrees used */
   proto_register_field_array(proto_btp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
   register_dissector_table("btp.dport", "BTP port", proto_btp, FT_UINT16, BASE_DEC);
+
+  /* Register preferences module */
+  /*btp_module = */prefs_register_protocol(proto_btp, proto_reg_handoff_btp);
+  register_dissector("btp", dissect_btp, proto_btp);
 }
 
 void
