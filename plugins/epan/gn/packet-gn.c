@@ -2173,7 +2173,7 @@ dissect_ieee1609dot2_unsecured_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_
     tvbuff_t *next_tvb;
     
     /* Sequence Tag */
-    tag = tvb_get_guint8(tvb, offset);
+    tag = tvb_get_guint8(tvb, offset); (void)(tag);
     //printf("dissect_ieee1609dot2_unsecured_data_packet: tag: '%x'\n", tag);
     offset += 1;
     // Ignore tag, SignedDataPayload.extDataHash shall not be used!!!

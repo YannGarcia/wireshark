@@ -9,16 +9,40 @@
 include( FindWSWinLibs )
 FindWSWinLibs( "WpdPack" "PCAP_HINTS" )
 
+find_path( NPCAP_HINTS
+    NAMES
+    	npcap.inf
+    PATHS
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Npcap;]"
+    NO_DEFAULT_PATH
+)
+
+if ( NOT NPCAP_HINTS )
+  if ( CYGWIN )
+    execute_process ( 
+      COMMAND reg query HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Npcap /ve
+      COMMAND grep Default
+      COMMAND sed "s/.*REG_SZ\\s*//g"
+      COMMAND cygpath -f -
+      OUTPUT_VARIABLE NPCAP_HINTS
+    )
+    string( STRIP "${NPCAP_HINTS}" NPCAP_HINTS )
+  endif()
+endif()
+
+if ( NPCAP_HINTS )
+  set (PCAP_HINTS "${NPCAP_HINTS}")
+endif()
+
 # The 64-bit wpcap.lib is under /x64
 set ( _PLATFORM_SUBDIR "" )
-if( WIN32 AND "${WIRESHARK_TARGET_PLATFORM}" STREQUAL "win64" )
+if ( ( WIN32 OR CYGWIN ) AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" )
   set ( _PLATFORM_SUBDIR "/x64" )
 endif()
 
 find_path( PCAP_INCLUDE_DIR
   NAMES
-  pcap/pcap.h
-  pcap.h
+    pcap.h
   HINTS
     "${PCAP_HINTS}/include"
 )
@@ -31,6 +55,18 @@ find_library( PCAP_LIBRARY
     "${PCAP_HINTS}/lib${_PLATFORM_SUBDIR}"
 )
 
+if( NPCAP_HINTS AND NOT PCAP_LIBRARY )
+  find_file( PCAP_LIBRARY
+    NAMES
+      wpcap.lib
+    PATHS
+      "${NPCAP_HINTS}/lib${_PLATFORM_SUBDIR}"
+    NO_DEFAULT_PATH
+  )
+endif()
+
+message( STATUS "PCAP_LIBRARY = ${PCAP_LIBRARY}" )
+message( STATUS "PCAP_INCLUDE_DIR = ${PCAP_INCLUDE_DIR}" )
 
 include( FindPackageHandleStandardArgs )
 find_package_handle_standard_args( PCAP DEFAULT_MSG PCAP_INCLUDE_DIR PCAP_LIBRARY )
@@ -53,7 +89,7 @@ if( PCAP_FOUND )
   set( CMAKE_REQUIRED_INCLUDES ${PCAP_INCLUDE_DIRS} )
   set( CMAKE_REQUIRED_LIBRARIES ${PCAP_LIBRARIES} )
 
-  if(WIN32)
+  if(WIN32 OR CYGWIN)
     # Prepopulate some values. WinPcap and NPcap always have these and
     # compilation checks on Windows can be slow.
     set(HAVE_PCAP_OPEN_DEAD TRUE)

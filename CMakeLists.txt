@@ -662,6 +662,12 @@ else() # ! MSVC
 		-DG_DISABLE_SINGLE_INCLUDES
 	)
 
+	if (CYGWIN)
+		add_definitions(
+			-D_GNU_SOURCE
+		)
+	endif()
+
 	set(WIRESHARK_LD_FLAGS
 		-Wl,--as-needed
 		# -flto
@@ -904,6 +910,7 @@ endif()
 if(ENABLE_AIRPCAP)
 	set(PACKAGELIST ${PACKAGELIST} AIRPCAP)
 endif()
+
 
 # Build the Qt GUI?
 if(BUILD_wireshark)
@@ -2211,6 +2218,7 @@ if(BUILD_wireshark AND QT_FOUND)
 	endif()
 
 	target_link_libraries(wireshark ${wireshark_LIBS})
+	set_target_properties(wireshark PROPERTIES IMPORT_PREFIX "dummy")
 	install(
 		TARGETS wireshark
 		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -2537,9 +2545,9 @@ endif()
 if(BUILD_dumpcap AND PCAP_FOUND)
 	set(dumpcap_LIBS
 		writecap
-		wsutil
 		caputils
 		ui
+		wsutil
 		${PCAP_LIBRARIES}
 		${CAP_LIBRARIES}
 		${GLIB2_LIBRARIES}
@@ -2823,7 +2831,7 @@ set(CLEAN_C_FILES
 # the INCLUDE environment variable).
 # This should apparently be handled for us via CMAKE_RC_FLAG_REGEX
 # in CMakeRCInformation.cmake but that doesn't appear to work.
-if (WIN32)
+if (WIN32 OR CYGWIN)
 	list(FILTER CLEAN_C_FILES EXCLUDE REGEX ".*\\.rc")
 endif (WIN32)
 

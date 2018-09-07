@@ -11,7 +11,7 @@ function(LOCATE_PYTHON_MODULE module)
 	# Parse (additional) arguments
 	set(options REQUIRED)
 	set(multiValueArgs PATHS)
-	cmake_parse_arguments(LPM "${options}" "" "${multiValueArgs}" ${ARGN})
+	cmake_parse_arguments(LPM "${options}" "${multiValueArgs}" ${ARGN})
 
 	string(TOUPPER ${module} module_upper)
 	if(NOT PY_${module_upper})

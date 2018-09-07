@@ -1041,7 +1041,6 @@ set(DISSECTOR_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-geneve.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-gfp.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-gift.c
-	${CMAKE_CURRENT_SOURCE_DIR}/packet-giop.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-git.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-glbp.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-gluster_cli.c
@@ -1897,6 +1896,7 @@ set(DISSECTOR_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-ziop.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-zrtp.c
 	${CMAKE_CURRENT_SOURCE_DIR}/packet-zvt.c
+	${CMAKE_CURRENT_SOURCE_DIR}/packet-giop.c
 )
 
 set(DISSECTOR_SUPPORT_SRC

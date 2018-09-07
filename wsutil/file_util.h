@@ -203,8 +203,9 @@ WS_DLL_PUBLIC void close_app_running_mutex();
 #define ws_fileno  fileno
 #define ws_isatty  isatty
 #define ws_getc_unlocked getc_unlocked
+#ifndef O_BINARY
 #define O_BINARY   0		/* Win32 needs the O_BINARY flag for open() */
-
+#endif
 /* Other CRT functions */
 #define ws_getpid  getpid
 #define ws_umask   umask

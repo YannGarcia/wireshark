@@ -19,7 +19,7 @@ set( EXT_ASN_FILE_LIST
 )
 
 set( ASN_FILE_LIST
-	ITS-Container.asn
+	ITS-Container-POI.asn
 	EVCSN-PDU-Descriptions.asn
 )
 
@@ -35,7 +35,7 @@ set( SRC_FILES
 	${EXT_ASN_FILE_LIST}
 )
 
-set( A2W_FLAGS -b )
+set( A2W_FLAGS -u -L )
 
 set( EXTRA_CNF
 	"${CMAKE_CURRENT_BINARY_DIR}/../acse/acse-exp.cnf"
