@@ -143,7 +143,9 @@ static gint ett_1609dot2_base_public_enc_key = -1;
 static gint ett_1609dot2_signed_data_payload_packet = -1;
 static gint ett_tbs_verification_key = -1;
 static gint ett_1609dot2_public_verification_key = -1;
-
+static gint ett_1609dot2_geographical_region_packet = -1;
+static gint ett_1609dot2_circular_region_packet = -1;
+static gint ett_1609dot2_2d_location_packet = -1;
 
 /* Basic Header fields */
 static int hf_gn_basicheader = -1;
@@ -278,7 +280,9 @@ static int hf_1609dot2_ecies_brainpoolp_256 = -1;
 static int hf_1609dot2_ecdsa_brainpoolp_256 = -1;
 static int hf_1609dot2_ecies_brainpoolp_384 = -1;
 static int hf_1609dot2_ecdsa_brainpoolp_384 = -1;
-
+static int hf_1609dot2_geographical_region_packet = -1;
+static int hf_1609dot2_circular_region_packet = -1;
+static int hf_1609dot2_2d_location_packet = -1;
 
 
 
@@ -2316,6 +2320,104 @@ dissect_ieee1609dot2_appPermissions_packet(tvbuff_t *tvb, packet_info *pinfo _U_
 } // End of function dissect_ieee1609dot2_appPermissions_packet
 
 static int
+dissect_ieee1609dot2_2d_location_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_2d_location_packet: offset=0x%02x\n", offset);
+  if (tree) {
+    double coordinate = 0.0;
+    gint32 tmp_ll = 0;
+    
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_2d_location_packet, tvb, offset, 8, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_2d_location_packet);
+
+    /* Latitude */
+    tmp_ll = (gint32)tvb_get_ntohl(tvb, offset);
+    coordinate = tmp_ll / 10000000.0;
+    proto_tree_add_int_format_value(sh_tree, hf_gn_area_lat, tvb, offset, 4, tmp_ll,
+				    "%02d°%02d'%02.2f\"%c (%d)",
+				    abs((int)coordinate),
+				    abs((int)((coordinate - (int)coordinate) * 60)),
+				    fabs(fmod((coordinate - (int)coordinate) * 3600,60)),
+				    (coordinate >= 0.0)?'N':'S',
+				    tmp_ll
+				    );
+    offset += 4;
+    
+    /* Longitude */
+    tmp_ll = (gint32)tvb_get_ntohl(tvb, offset);
+    coordinate = tmp_ll / 10000000.0;
+    proto_tree_add_int_format_value(sh_tree, hf_gn_area_long, tvb, offset, 4, tmp_ll,
+				    "%02d°%02d'%02.2f\"%c (%d)",
+				    abs((int)coordinate),
+				    abs((int)((coordinate - (int)coordinate) * 60)),
+				  fabs(fmod((coordinate - (int)coordinate) * 3600,60)),
+				    (coordinate >= 0.0)?'E':'W',
+				    tmp_ll
+				    );
+    offset += 4; 
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_2d_location_packet
+
+static int
+dissect_ieee1609dot2_circular_region_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_circular_region_packet: offset=0x%02x\n", offset);
+  if (tree) {
+    gint sh_len;
+    
+    /* Sec Header tree - See IEEE Std 1609.2a-2017 */
+    sh_len = tvb_captured_length_remaining(tvb, offset);
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_circular_region_packet, tvb, offset, sh_len, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_circular_region_packet);
+    
+    /* center */
+    offset = dissect_ieee1609dot2_2d_location_packet(tvb, pinfo, sh_tree, offset);
+    /* radius */
+    proto_tree_add_item(sh_tree, hf_gn_sh_field_geo_circle_radius, tvb, offset, 2, FALSE);
+    offset += 2;
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_circular_region_packet
+
+static int
+dissect_ieee1609dot2_geographical_region_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_geographical_region_packet: offset=0x%02x\n", offset);
+  if (tree) {
+    guint8 tag;
+    gint sh_len;
+    
+    /* Sec Header tree - See IEEE Std 1609.2a-2017 */
+    sh_len = tvb_captured_length_remaining(tvb, offset);
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_geographical_region_packet, tvb, offset, sh_len, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_geographical_region_packet);
+    
+    /* Sequence Tag */
+    tag = tvb_get_guint8(tvb, offset);
+    printf("dissect_ieee1609dot2_geographical_region_packet: tag: '%x'\n", tag);
+    offset += 1;
+
+    if ((tag & 0x7f) == 0x00) {
+      offset = dissect_ieee1609dot2_circular_region_packet(tvb, pinfo, sh_tree, offset);
+    }
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_geographical_region_packet
+
+static int
 dissect_ieee1609dot2_toBeSignedCertificate_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 {
   proto_tree *sh_tree = NULL;
@@ -2353,7 +2455,7 @@ dissect_ieee1609dot2_toBeSignedCertificate_packet(tvbuff_t *tvb, packet_info *pi
 
     if ((tag & 0x40) == 0x40) { /* region */
       printf("dissect_ieee1609dot2_toBeSignedCertificate_packet: Process GeographicalRegion\n");
-      //      offset = dissect_ieee1609dot2_geographical_region_packet(tvb, pinfo, sh_tree, offset);
+      offset = dissect_ieee1609dot2_geographical_region_packet(tvb, pinfo, sh_tree, offset);
     }
     if ((tag & 0x20) == 0x20) { /* assuranceLevel */
       printf("dissect_ieee1609dot2_toBeSignedCertificate_packet: Process AssuranceLevel\n");
@@ -3728,6 +3830,15 @@ proto_register_gn(void)
     { &hf_1609dot2_ecdsa_brainpoolp_384,
       {"ECDSA BrainpoolP384r1", "gn.sec.ecdsa_brainpoolp_384", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
     },
+    { &hf_1609dot2_geographical_region_packet,
+      {"IEEE 1609.2 Geo. Region", "gn.sec.geo_region", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+    },
+    { &hf_1609dot2_circular_region_packet,
+      {"IEEE 1609.2 Circular Region", "gn.sec.geo_region.circular", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+    },
+    { &hf_1609dot2_2d_location_packet,
+      {"IEEE 1609.2 2D Location", "gn.sec.geo_region.circular.loc_2d", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+    },
 
 
 
@@ -4177,7 +4288,10 @@ proto_register_gn(void)
     &ett_1609dot2_base_public_enc_key,
     &ett_1609dot2_signed_data_payload_packet,
     &ett_tbs_verification_key,
-    &ett_1609dot2_public_verification_key
+    &ett_1609dot2_public_verification_key,
+    &ett_1609dot2_geographical_region_packet,
+    &ett_1609dot2_circular_region_packet,
+    &ett_1609dot2_2d_location_packet
   };
 
   /* Register the protocol name and description */
