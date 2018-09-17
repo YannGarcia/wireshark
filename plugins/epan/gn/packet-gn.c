@@ -151,6 +151,8 @@ static gint ett_1609dot2_rectangle_region_packet = -1;
 static gint ett_1609dot2_polygonal_region_packet = -1;
 static gint ett_1609dot2_point_region_packet = -1;
 static gint ett_1609dot2_2d_location_packet = -1;
+static gint ett_1609dot2_identified_region_packet = -1;
+static gint ett_1609dot2_country_region = -1;
 
 /* Basic Header fields */
 static int hf_gn_basicheader = -1;
@@ -293,6 +295,8 @@ static int hf_1609dot2_rectangle_region_packet = -1;
 static int hf_1609dot2_polygonal_region_packet = -1;
 static int hf_1609dot2_point_region_packet = -1;
 static int hf_1609dot2_2d_location_packet = -1;
+static int hf_1609dot2_identified_region_packet = -1;
+static int hf_1609dot2_country_region = -1;
 
 
 
@@ -2436,6 +2440,35 @@ dissect_ieee1609dot2_point_region_packet(tvbuff_t *tvb, packet_info *pinfo, prot
 } // End of function dissect_ieee1609dot2_point_region_packet
 
 static int
+dissect_ieee1609dot2_country_region(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
+{
+  /* proto_tree *sh_tree = NULL; */
+  /* proto_item *sh_ti = NULL; */
+
+  printf(">>> dissect_ieee1609dot2_country_region: offset=0x%02x\n", offset);
+  if (tree) {
+    guint8 tag;
+    
+    /* sh_ti = proto_tree_add_item(tree, hf_1609dot2_country_region, tvb, offset, 3, FALSE); */
+    /* sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_country_region); */
+
+    /* Sequence Tag */
+    tag = tvb_get_guint8(tvb, offset);
+    printf("dissect_ieee1609dot2_country_region: tag: '%x'\n", tag);
+    offset += 1;
+
+    if ((tag & 0x7f) == 0) { // CountryOnly
+      proto_tree_add_item(tree, hf_1609dot2_country_region, tvb, offset, 2, FALSE);
+      offset += 2;
+    } else {
+      // TODO regions: SequenceOfUint8
+    }
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_country_region
+
+static int
 dissect_ieee1609dot2_rectangular_region_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 {
   proto_tree *sh_tree = NULL;
@@ -2443,9 +2476,9 @@ dissect_ieee1609dot2_rectangular_region_packet(tvbuff_t *tvb, packet_info *pinfo
 
   printf(">>> dissect_ieee1609dot2_rectangular_region_packet: offset=0x%02x\n", offset);
   if (tree) {
-    gint sh_len = 0;
-    gint len = 0;
-    gint items = 0;
+    guint sh_len = 0;
+    guint len = 0;
+    guint items = 0;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
     sh_len = tvb_captured_length_remaining(tvb, offset);
@@ -2457,12 +2490,16 @@ dissect_ieee1609dot2_rectangular_region_packet(tvbuff_t *tvb, packet_info *pinfo
     offset += 1;
     if (len == 1) {
       items = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
-    } if (len == 2) {
+    } else if (len == 2) {
       items = tvb_get_guint16(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
+    } else if (len == 3) {
+      items = tvb_get_guint24(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
+    } else if (len == 4) {
+      items = tvb_get_guint32(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
     } // else, not reallistic
     offset += len;
     printf("dissect_ieee1609dot2_rectangular_region_packet: #items=%d\n", items);
-    for (int i = 0; i < items; i++) {
+    for (guint i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_2d_location_packet(tvb, pinfo, sh_tree, offset);
     }
   }
@@ -2478,9 +2515,9 @@ dissect_ieee1609dot2_polygonal_region_packet(tvbuff_t *tvb, packet_info *pinfo, 
 
   printf(">>> dissect_ieee1609dot2_polygonal_region_packet: offset=0x%02x\n", offset);
   if (tree) {
-    gint sh_len = 0;
-    gint len = 0;
-    gint items = 0;
+    guint sh_len = 0;
+    guint len = 0;
+    guint items = 0;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
     sh_len = tvb_captured_length_remaining(tvb, offset);
@@ -2492,18 +2529,61 @@ dissect_ieee1609dot2_polygonal_region_packet(tvbuff_t *tvb, packet_info *pinfo, 
     offset += 1;
     if (len == 1) {
       items = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
-    } if (len == 2) {
+    } else if (len == 2) {
       items = tvb_get_guint16(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
+    } else if (len == 3) {
+      items = tvb_get_guint24(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
+    } else if (len == 4) {
+      items = tvb_get_guint32(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
     } // else, not reallistic
     offset += len;
     printf("dissect_ieee1609dot2_polygonal_region_packet: #items=%d\n", items);
-    for (int i = 0; i < items; i++) {
+    for (guint i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_point_region_packet(tvb, pinfo, sh_tree, offset);
     }
   }
 
   return offset;
 } // End of function dissect_ieee1609dot2_polygonal_region_packet
+
+static int
+dissect_ieee1609dot2_identified_region_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_identified_region_packet: offset=0x%02x\n", offset);
+  if (tree) {
+    guint sh_len = 0;
+    guint len = 0;
+    guint items = 0;
+    
+    /* Sec Header tree - See IEEE Std 1609.2a-2017 */
+    sh_len = tvb_captured_length_remaining(tvb, offset);
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_identified_region_packet, tvb, offset, sh_len, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_identified_region_packet);
+
+    len = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
+    printf("dissect_ieee1609dot2_identified_region_packet: len=%d\n", len);
+    offset += 1;
+    if (len == 1) {
+      items = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
+    } else if (len == 2) {
+      items = tvb_get_guint16(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
+    } else if (len == 3) {
+      items = tvb_get_guint24(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
+    } else if (len == 4) {
+      items = tvb_get_guint32(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
+    } // else, not reallistic
+    offset += len;
+    printf("dissect_ieee1609dot2_identified_region_packet: #items=%d\n", items);
+    for (guint i = 0; i < items; i++) {
+      offset = dissect_ieee1609dot2_country_region(tvb, pinfo, sh_tree, offset);
+    }
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_identified_region_packet
 
 static int
 dissect_ieee1609dot2_geographical_region_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
@@ -2530,8 +2610,8 @@ dissect_ieee1609dot2_geographical_region_packet(tvbuff_t *tvb, packet_info *pinf
       offset = dissect_ieee1609dot2_circular_region_packet(tvb, pinfo, sh_tree, offset);
     } else if ((tag & 0x7f) == 0x01) {
       offset = dissect_ieee1609dot2_rectangular_region_packet(tvb, pinfo, sh_tree, offset);
-    } else if ((tag & 0x7f) == 0x02) {
-      offset = dissect_ieee1609dot2_polygonal_region_packet(tvb, pinfo, sh_tree, offset);
+    } else if ((tag & 0x7f) == 0x03) {
+      offset = dissect_ieee1609dot2_identified_region_packet(tvb, pinfo, sh_tree, offset);
     }
   }
 
@@ -3970,11 +4050,18 @@ proto_register_gn(void)
       {"IEEE 1609.2 Polygonal Region", "gn.sec.geo_region.polygonal", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
     },
     { &hf_1609dot2_point_region_packet,
-      {"IEEE 1609.2 polygon Point", "gn.sec.geo_region.polygonal.point", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+      {"IEEE 1609.2 Polygon Point", "gn.sec.geo_region.polygonal.point", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
     },
     { &hf_1609dot2_2d_location_packet,
       {"IEEE 1609.2 2D Location", "gn.sec.geo_region.circular.loc_2d", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
     },
+    { &hf_1609dot2_identified_region_packet,
+      {"IEEE 1609.2 Identified Region", "gn.sec.geo_region.id", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+    },
+    { &hf_1609dot2_country_region,
+      {"IEEE 1609.2 Country code", "gn.sec.geo_region.id.country", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL}
+    },
+
 
 
 
@@ -4432,7 +4519,9 @@ proto_register_gn(void)
     &ett_1609dot2_rectangle_region_packet,
     &ett_1609dot2_polygonal_region_packet,
     &ett_1609dot2_point_region_packet,
-    &ett_1609dot2_2d_location_packet
+    &ett_1609dot2_2d_location_packet,
+    &ett_1609dot2_identified_region_packet,
+    &ett_1609dot2_country_region
   };
 
   /* Register the protocol name and description */
