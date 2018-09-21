@@ -35,6 +35,7 @@
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
+#include <epan/uat.h>
 
 void proto_register_gn(void);
 void proto_reg_handoff_gn(void);
@@ -370,7 +371,42 @@ static int hf_gn_st_symmalg = -1;
 static int hf_gn_st_ecc_pt = -1;
 static int hf_gn_st_opaque = -1;
 
+/*-------------------------------------
+ * UAT for ESP
+ *-------------------------------------
+ */
+/* UAT entry structure. */
+typedef struct {
+  guint8 protocol;
+  gchar *srcIP;
+  gchar *dstIP;
+  gchar *spi;
 
+  guint8 encryption_algo;
+  gchar *encryption_key_string;
+  gchar *encryption_key;
+  gint encryption_key_length;
+  gboolean         cipher_hd_created;
+
+  guint8 authentication_algo;
+  gchar *authentication_key_string;
+  gchar *authentication_key;
+  gint authentication_key_length;
+} uat_esp_sa_record_t;
+
+//static uat_esp_sa_record_t *uat_esp_sa_records = NULL;
+
+/* Extra SA records that may be set programmatically */
+/* 'records' array is now allocated on the heap */
+#define MAX_EXTRA_SA_RECORDS 16
+typedef struct extra_esp_sa_records_t {
+  guint num_records;
+  uat_esp_sa_record_t *records;
+} extra_esp_sa_records_t;
+//static extra_esp_sa_records_t extra_esp_sa_records;
+
+//static uat_t * esp_uat = NULL;
+//static guint num_sa_uat = 0;
 
 static const value_string basic_next_header_names[] = {
   { 0, "Any" },
@@ -1952,8 +1988,8 @@ dissect_ieee1609dot2_eccP256CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett);
     
     /* Sequence Tag */
@@ -1970,6 +2006,8 @@ dissect_ieee1609dot2_eccP256CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_1, tvb, offset, 32, FALSE);
       offset += 32;
     } // TODO
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -1987,8 +2025,8 @@ dissect_ieee1609dot2_eccP384CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett);
     
     /* Sequence Tag */
@@ -2005,6 +2043,8 @@ dissect_ieee1609dot2_eccP384CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_1, tvb, offset, 48, FALSE);
       offset += 48;
     } // TODO
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -2021,8 +2061,8 @@ dissect_ieee1609dot2_public_verification_key_packet(tvbuff_t *tvb, packet_info *
     guint sh_len;
     guint8 tag;
     
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_public_verification_key, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_public_verification_key, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_public_verification_key);
 
     /* Sequence Tag */
@@ -2035,6 +2075,8 @@ dissect_ieee1609dot2_public_verification_key_packet(tvbuff_t *tvb, packet_info *
     } else {
       offset = dissect_ieee1609dot2_eccP384CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_brainpoolp_384, ett_1609dot2_public_verification_key);
     }
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2051,8 +2093,8 @@ dissect_ieee1609dot2_verification_key_packet(tvbuff_t *tvb _U_, packet_info *pin
     guint sh_len;
     guint8 tag;
     
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_verification_key, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_verification_key, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_tbs_verification_key);
 
     /* Sequence Tag */
@@ -2063,6 +2105,8 @@ dissect_ieee1609dot2_verification_key_packet(tvbuff_t *tvb _U_, packet_info *pin
     if ((tag & 0x7f) == 0x00) {
       offset = dissect_ieee1609dot2_public_verification_key_packet(tvb, pinfo, sh_tree, offset);
     }
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2079,8 +2123,8 @@ dissect_ieee1609dot2_base_public_encryption_key_packet(tvbuff_t *tvb, packet_inf
     guint sh_len;
     guint8 tag;
     
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_base_public_enc_key, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_base_public_enc_key, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_base_public_enc_key);
 
     /* Sequence Tag */
@@ -2093,6 +2137,8 @@ dissect_ieee1609dot2_base_public_encryption_key_packet(tvbuff_t *tvb, packet_inf
     } else {
       offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecies_brainpoolp_256, ett_1609dot2_base_public_enc_key);
     }
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2108,8 +2154,8 @@ dissect_ieee1609dot2_public_encryption_key_packet(tvbuff_t *tvb, packet_info *pi
   if (tree) { /* we are being asked for details */
     guint sh_len;
 
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_public_enc_key, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_public_enc_key, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_public_enc_key);
 
     /* SymmAlgorithm */
@@ -2117,6 +2163,8 @@ dissect_ieee1609dot2_public_encryption_key_packet(tvbuff_t *tvb, packet_info *pi
     offset += 1;
     /* BasePublicEncryptionKey */
     offset = dissect_ieee1609dot2_base_public_encryption_key_packet(tvb, pinfo, sh_tree, offset);
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2199,7 +2247,7 @@ static int
 dissect_ieee1609dot2_psid_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
 {
   printf(">>> dissect_ieee1609dot2_psid_packet: offset=0x%02x\n", offset);
-  printf("dissect_ieee1609dot2_psid_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(tvb, offset), tvb_get_guint8(tvb, offset + 1), tvb_get_guint8(tvb, offset + 2), tvb_get_guint8(tvb, offset + 3), tvb_get_guint8(tvb, offset + 4));
+  //printf("dissect_ieee1609dot2_psid_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(tvb, offset), tvb_get_guint8(tvb, offset + 1), tvb_get_guint8(tvb, offset + 2), tvb_get_guint8(tvb, offset + 3), tvb_get_guint8(tvb, offset + 4));
   if (tree) { /* we are being asked for details */
     //guint8 len;
     gint aids_size = 1;
@@ -2313,8 +2361,8 @@ dissect_ieee1609dot2_appPermissions_packet(tvbuff_t *tvb, packet_info *pinfo _U_
     guint8 len = 0;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_app_permissions_packet, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_app_permissions_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_app_permissions_packet);
     
     len = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
@@ -2329,7 +2377,9 @@ dissect_ieee1609dot2_appPermissions_packet(tvbuff_t *tvb, packet_info *pinfo _U_
     printf("dissect_ieee1609dot2_toBeSignedCertificate_packet: #items=%d\n", items);
     for (int i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_psid_ssp_packet(tvb, pinfo, sh_tree, offset);
-    }
+    } // End of 'for' statement
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
   
   return offset;
@@ -2390,8 +2440,8 @@ dissect_ieee1609dot2_circular_region_packet(tvbuff_t *tvb, packet_info *pinfo, p
     gint sh_len;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_circular_region_packet, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_circular_region_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_circular_region_packet);
     
     /* center */
@@ -2399,6 +2449,8 @@ dissect_ieee1609dot2_circular_region_packet(tvbuff_t *tvb, packet_info *pinfo, p
     /* radius */
     proto_tree_add_item(sh_tree, hf_gn_sh_field_geo_circle_radius, tvb, offset, 2, FALSE);
     offset += 2;
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2481,8 +2533,8 @@ dissect_ieee1609dot2_rectangular_region_packet(tvbuff_t *tvb, packet_info *pinfo
     guint items = 0;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_rectangular_region_packet, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_rectangular_region_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_rectangular_region_packet);
 
     len = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
@@ -2501,7 +2553,9 @@ dissect_ieee1609dot2_rectangular_region_packet(tvbuff_t *tvb, packet_info *pinfo
     printf("dissect_ieee1609dot2_rectangular_region_packet: #items=%d\n", items);
     for (guint i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_2d_location_packet(tvb, pinfo, sh_tree, offset);
-    }
+    } // End of 'for' statement
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2520,8 +2574,8 @@ dissect_ieee1609dot2_polygonal_region_packet(tvbuff_t *tvb, packet_info *pinfo, 
     guint items = 0;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_polygonal_region_packet, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_polygonal_region_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_polygonal_region_packet);
 
     len = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
@@ -2540,7 +2594,9 @@ dissect_ieee1609dot2_polygonal_region_packet(tvbuff_t *tvb, packet_info *pinfo, 
     printf("dissect_ieee1609dot2_polygonal_region_packet: #items=%d\n", items);
     for (guint i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_point_region_packet(tvb, pinfo, sh_tree, offset);
-    }
+    } // End of 'for' statement
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2554,13 +2610,13 @@ dissect_ieee1609dot2_identified_region_packet(tvbuff_t *tvb, packet_info *pinfo,
 
   printf(">>> dissect_ieee1609dot2_identified_region_packet: offset=0x%02x\n", offset);
   if (tree) {
-    guint sh_len = 0;
+    guint sh_len;
     guint len = 0;
     guint items = 0;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_identified_region_packet, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_identified_region_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_identified_region_packet);
 
     len = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
@@ -2579,7 +2635,9 @@ dissect_ieee1609dot2_identified_region_packet(tvbuff_t *tvb, packet_info *pinfo,
     printf("dissect_ieee1609dot2_identified_region_packet: #items=%d\n", items);
     for (guint i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_country_region(tvb, pinfo, sh_tree, offset);
-    }
+    } // End of 'for' statement
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2597,8 +2655,8 @@ dissect_ieee1609dot2_geographical_region_packet(tvbuff_t *tvb, packet_info *pinf
     gint sh_len;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_geographical_region_packet, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_geographical_region_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_geographical_region_packet);
     
     /* Sequence Tag */
@@ -2613,6 +2671,8 @@ dissect_ieee1609dot2_geographical_region_packet(tvbuff_t *tvb, packet_info *pinf
     } else if ((tag & 0x7f) == 0x03) {
       offset = dissect_ieee1609dot2_identified_region_packet(tvb, pinfo, sh_tree, offset);
     }
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2630,8 +2690,8 @@ dissect_ieee1609dot2_toBeSignedCertificate_packet(tvbuff_t *tvb, packet_info *pi
     gint sh_len;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_len = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_to_be_signed_certificate_packet, tvb, offset, sh_len, FALSE);
+    sh_len = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_to_be_signed_certificate_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_tbs_certificate_packet);
     
     /* Sequence Tag */
@@ -2682,6 +2742,8 @@ dissect_ieee1609dot2_toBeSignedCertificate_packet(tvbuff_t *tvb, packet_info *pi
     
     /* Verification key */
     offset = dissect_ieee1609dot2_verification_key_packet(tvb, pinfo, sh_tree, offset);
+
+    proto_item_set_len(sh_ti, offset - sh_len);
   }
 
   return offset;
@@ -2695,9 +2757,11 @@ dissect_ieee1609dot2_certificate_packet(tvbuff_t *tvb, packet_info *pinfo, proto
 
   printf(">>> dissect_ieee1609dot2_certificate_packet: offset=0x%02x\n", offset);
   if (tree) { /* we are being asked for details */
+    gint sh_length;
     guint8 tag;
     
     //printf("dissect_ieee1609dot2_certificate_packet: %02x %02x %02x %02x %02x\n", tvb_get_guint8(tvb, offset),tvb_get_guint8(tvb, offset+1),tvb_get_guint8(tvb, offset+2),tvb_get_guint8(tvb, offset+3),tvb_get_guint8(tvb, offset+4));
+    sh_length = offset;
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_certificate_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_certificate_packet);
 
@@ -2736,6 +2800,8 @@ dissect_ieee1609dot2_certificate_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     } else {
       // TODO
     }
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
   
   return offset;
@@ -2790,8 +2856,8 @@ dissect_ieee1609dot2_ecdsaNistP256Signature_packet(tvbuff_t *tvb, packet_info *p
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
 
     // EccP256CurvePoint
@@ -2799,6 +2865,8 @@ dissect_ieee1609dot2_ecdsaNistP256Signature_packet(tvbuff_t *tvb, packet_info *p
     // OCTET STRING (SIZE (32))
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 32, FALSE);
     offset += 32;
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -2815,8 +2883,8 @@ dissect_ieee1609dot2_ecdsaBrainpoolP256Signature_packet(tvbuff_t *tvb, packet_in
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
 
     // EccP256CurvePoint
@@ -2824,6 +2892,8 @@ dissect_ieee1609dot2_ecdsaBrainpoolP256Signature_packet(tvbuff_t *tvb, packet_in
     // OCTET STRING (SIZE (32))
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 32, FALSE);
     offset += 32;
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -2840,7 +2910,7 @@ dissect_ieee1609dot2_ecdsaBrainpoolP384Signature_packet(tvbuff_t *tvb, packet_in
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
+    sh_length = offset;
     sh_ti = proto_tree_add_item(tree, hf, tvb, offset, sh_length, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
 
@@ -2849,6 +2919,8 @@ dissect_ieee1609dot2_ecdsaBrainpoolP384Signature_packet(tvbuff_t *tvb, packet_in
     // OCTET STRING (SIZE (48))
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 48, FALSE);
     offset += 48;
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -2866,8 +2938,8 @@ dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_t
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
 
     /* Sequence Tag */
@@ -2881,7 +2953,9 @@ dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_t
       offset = dissect_ieee1609dot2_ecdsaBrainpoolP256Signature_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_to_be_signed_data_brainpoolp256);
     } else if ((tag & 0x7f) == 0x02) {
       offset = dissect_ieee1609dot2_ecdsaBrainpoolP384Signature_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_to_be_signed_data_brainpoolp384);
-    } 
+    }
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
   
   return offset;
@@ -2928,8 +3002,8 @@ dissect_ieee1609dot2_header_info_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_header_info_packet, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_header_info_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_header_info_packet);
     
     /* Sequence Tag */
@@ -2951,6 +3025,8 @@ dissect_ieee1609dot2_header_info_packet(tvbuff_t *tvb, packet_info *pinfo, proto
       tree_gn_cert_time64(tvb, sh_tree, hf_gn_sh_field_gentime, offset);
       offset += 8;
       }*/
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -2968,8 +3044,8 @@ dissect_ieee1609dot2_signed_data_payload_packet(tvbuff_t *tvb, packet_info *pinf
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_to_be_signed_data_payload_packet, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_to_be_signed_data_payload_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signed_data_payload_packet);
     
     /* Sequence Tag */
@@ -2978,6 +3054,8 @@ dissect_ieee1609dot2_signed_data_payload_packet(tvbuff_t *tvb, packet_info *pinf
     offset += 1;
     offset = dissect_ieee1609dot2_data_packet(tvb, pinfo, sh_tree, offset);
     /* TODO offset = dissect_ieee1609dot2_hashed_data_packet(tvb, pinfo, sh_tree, offset); */
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
   
   return offset;
@@ -2994,12 +3072,14 @@ dissect_ieee1609dot2_to_be_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo,
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_to_be_signed_data_packet, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_to_be_signed_data_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_to_be_signed_data_packet);
 
     offset = dissect_ieee1609dot2_signed_data_payload_packet(tvb, pinfo, sh_tree, offset);
     offset = dissect_ieee1609dot2_header_info_packet(tvb, pinfo, sh_tree, offset);
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -3014,11 +3094,11 @@ dissect_ieee1609dot2_signer_identifier_packet(tvbuff_t *tvb, packet_info *pinfo,
   printf(">>> dissect_ieee1609dot2_signer_identifier_packet: offset=0x%02x\n", offset);
   if (tree) { /* we are being asked for details */
     guint8 tag;
-    gint length;
+    gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_signer_identifier_packet, tvb, offset, length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_signer_identifier_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
 
     /* Sequence Tag */
@@ -3034,6 +3114,8 @@ dissect_ieee1609dot2_signer_identifier_packet(tvbuff_t *tvb, packet_info *pinfo,
       proto_tree_add_item(tree, hf_gn_sh_field_self, tvb, offset, 1, FALSE);
       //offset += 1;
     }
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
   
   return offset;
@@ -3051,8 +3133,8 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_signed_data_packet, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_signed_data_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signed_data_packet);
 
     /* HashAlgoritm */
@@ -3063,6 +3145,8 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     offset = dissect_ieee1609dot2_to_be_signed_data_packet(tvb, pinfo, sh_tree, offset);
     offset = dissect_ieee1609dot2_signer_identifier_packet(tvb, pinfo, sh_tree, offset);
     offset = dissect_ieee1609dot2_signature_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_to_be_signed_data);
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
   
   printf("dissect_ieee1609dot2_signed_data_packet: certificate_type: Process Signature: offset=0x%02x\n", offset);
@@ -3087,8 +3171,8 @@ dissect_ieee1609dot2_content_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tre
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_content_packet, tvb, offset, sh_length, FALSE);
+    sh_length =  offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_content_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_content_packet);
     
     /* Choice Tag */
@@ -3105,6 +3189,8 @@ dissect_ieee1609dot2_content_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tre
     } else {
       /* TODO: signedCertificateRequest */
     }
+
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
   
   return offset;
@@ -3121,15 +3207,16 @@ dissect_ieee1609dot2_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
-    sh_length = tvb_captured_length_remaining(tvb, offset);
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_secured_message, tvb, offset, sh_length, FALSE);
+    sh_length = offset;
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_secured_message, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_data_packet);
     
     /* Protocol version*/
     proto_tree_add_item(sh_tree, hf_gn_sh_version, tvb, offset, 1, FALSE);
     offset += 1;
-    
-    return dissect_ieee1609dot2_content_packet(tvb, pinfo, sh_tree, offset);
+    /* Content */
+    offset = dissect_ieee1609dot2_content_packet(tvb, pinfo, sh_tree, offset);
+    proto_item_set_len(sh_ti, offset - sh_length);    
   }
   
   return offset;
