@@ -96,6 +96,8 @@ static gint ett_1609dot2_recipient_info_data_packet = -1;
 static gint ett_1609dot2_recipient_info_packet = -1;
 static gint ett_1609dot2_pk_recipient_info_packet = -1;
 static gint ett_1609dot2_enc_data_key_data_packet = -1;
+static gint ett_1609dot2_ciphertext_data_packet = -1;
+static gint ett_1609dot2_aes_128_ccm_cipher_text_data_packet = -1;
 
 /* Secured packet IEE1906.2 */
 static int hf_1609dot2_protocol_version = -1;
@@ -159,7 +161,9 @@ static int hf_1609dot2_pk_recipient_info_packet = -1;
 static int hf_1609dot2_enc_data_key_data_packet = -1;
 static int hf_1609dot2_c = -1;
 static int hf_1609dot2_t = -1;
-
+static int hf_1609dot2_ciphertext_data_packet = -1;
+static int hf_1609dot2_aes_128_ccm_cipher_text_data_packet = -1;
+static int hf_1609dot2_nonce = -1;
 
 static int hf_gn_st_aid_val = -1;
 static int hf_gn_st_opaque = -1;
@@ -1636,6 +1640,37 @@ dissect_ieee1609dot2_recipient_info_data_packet(tvbuff_t *tvb, packet_info *pinf
 } // End of function dissect_ieee1609dot2_recipient_info_data_packet
 
 static int
+dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet: offset=0x%02x\n", offset);
+  if (tree) { /* we are being asked for details */
+    gint sh_length;
+    gint len;
+
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_aes_128_ccm_cipher_text_data_packet, tvb, offset, -1, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_aes_128_ccm_cipher_text_data_packet);
+
+    sh_length = offset;
+    
+    // OCTET STRING (SIZE (12))
+    proto_tree_add_item(sh_tree, hf_1609dot2_nonce, tvb, offset, 12, FALSE);
+    offset += 12;
+    // Ciphered text
+    len = tvb_captured_length_remaining(tvb, offset);
+    // Copy ciphered text bloc into memory for decrypting
+    proto_tree_add_item(sh_tree, hf_gn_st_opaque, tvb, offset, len, FALSE);
+    offset += len;
+    
+    proto_item_set_len(sh_ti, offset - sh_length);
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet
+
+static int
 dissect_ieee1609dot2_ciphertext_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
 {
   proto_tree *sh_tree = NULL;
@@ -1645,7 +1680,6 @@ dissect_ieee1609dot2_ciphertext_data_packet(tvbuff_t *tvb, packet_info *pinfo _U
   if (tree) { /* we are being asked for details */
     guint8 tag;
     gint sh_length;
-    guint8 items;
 
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_ciphertext_data_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_ciphertext_data_packet);
@@ -1657,7 +1691,7 @@ dissect_ieee1609dot2_ciphertext_data_packet(tvbuff_t *tvb, packet_info *pinfo _U
     printf("dissect_ieee1609dot2_ciphertext_data_packet: tag: '%x'\n", tag);
     offset += 1;
     if ((tag & 0x7f) == 0x00) {
-      offset = dissect_ieee1609dot2_aes_ccm_ciphertext_packet(tvb, pinfo, sh_tree, offset);
+      offset = dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvb, pinfo, sh_tree, offset);
     }
     
     proto_item_set_len(sh_ti, offset - sh_length);
@@ -2011,7 +2045,7 @@ proto_register_etsi_ieee1609dot2(void)
 				    {"IEEE 1609.2 EncryptedData", "gn.sec.enc", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
 				  },
 				  { &hf_1609dot2_recipient_info_data_packet,
-				    {"IEEE 1609.2 RecipientsInfo", "gn.sec.enc.ris", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+				    {"IEEE 1609.2 RecipientInfo list", "gn.sec.enc.ris", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
 				  },
 				  { &hf_1609dot2_recipient_info_packet,
 				    {"IEEE 1609.2 RecipientInfo", "gn.sec.enc.ris.ri", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
@@ -2020,13 +2054,22 @@ proto_register_etsi_ieee1609dot2(void)
 				    {"IEEE 1609.2 PKRecipientInfo", "gn.sec.enc.ris.ri.pkri", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
 				  },
 				  { &hf_1609dot2_enc_data_key_data_packet,
-				    {"IEEE 1609.2 Encrypted DataEnccryptionKey", "gn.sec.enc.ris.ri.pkri.enckey", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+				    {"IEEE 1609.2 Encrypted DataEncryptionKey", "gn.sec.enc.ris.ri.pkri.enckey", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
 				  },
 				  { &hf_1609dot2_c,
 				    {"IEEE 1609.2 Encrypted AES Symmetric keys", "gn.sec.enc.ris.ri.pkri.c", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}
 				  },
 				  { &hf_1609dot2_t,
-				    {"IEEE 1609.2 Nonce", "gn.sec.enc.ris.ri.pkri.t", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}
+				    {"IEEE 1609.2 Tag", "gn.sec.enc.ris.ri.pkri.t", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}
+				  },
+				  { &hf_1609dot2_ciphertext_data_packet,
+				    {"IEEE 1609.2 Ciphered data", "gn.sec.enc.cyphered_data", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+				  },
+				  { &hf_1609dot2_aes_128_ccm_cipher_text_data_packet,
+				    {"IEEE 1609.2 Aes128 Ccm Ciphered data", "gn.sec.enc.cyphered_data.aes128ccm", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+				  },
+				  { &hf_1609dot2_nonce,
+				    {"IEEE 1609.2 Nonce", "gn.sec.enc.cyphered_data.aes128ccm.nonce", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}
 				  },
     { &hf_gn_sh_field_hashedid8,
       {"HashedId8", "gn.sh.hashedid8", FT_UINT64, BASE_HEX, NULL, 0x00, NULL, HFILL}
@@ -2070,7 +2113,9 @@ proto_register_etsi_ieee1609dot2(void)
 			&ett_1609dot2_recipient_info_data_packet,
 			&ett_1609dot2_recipient_info_packet,
 			&ett_1609dot2_pk_recipient_info_packet,
-			&ett_1609dot2_enc_data_key_data_packet
+			&ett_1609dot2_enc_data_key_data_packet,
+			&ett_1609dot2_ciphertext_data_packet,
+			&ett_1609dot2_aes_128_ccm_cipher_text_data_packet
   };
 
   /* Register the protocol name and description */
