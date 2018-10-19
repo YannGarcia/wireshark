@@ -1394,6 +1394,7 @@ if(ENABLE_PLUGINS)
 		plugins/epan/wimaxmacphy
 		plugins/epan/btp
 		plugins/epan/gn
+		plugins/epan/etsi_ieee1609dot2
 		plugins/epan/c2p
 		plugins/epan/itsut
 		plugins/wiretap/usbdump
