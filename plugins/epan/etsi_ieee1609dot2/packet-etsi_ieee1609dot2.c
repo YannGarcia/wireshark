@@ -223,7 +223,7 @@ typedef struct extra_etsi_ieee1609dot2_sa_records_t {
 } extra_etsi_ieee1609dot2_sa_records_t;
 static extra_etsi_ieee1609dot2_sa_records_t extra_etsi_ieee1609dot2_sa_records;
 
-//static uat_t * etsi_ieee1609dot2__uat = NULL;
+//static uat_t * etsi_ieee1609dot2_uat = NULL;
 //static guint num_sa_uat = 0;
 
 /*************************************/
@@ -1659,12 +1659,23 @@ dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_i
     proto_tree_add_item(sh_tree, hf_1609dot2_nonce, tvb, offset, 12, FALSE);
     offset += 12;
     // Ciphered text
-    len = tvb_captured_length_remaining(tvb, offset);
+    len = tvb_get_guint8(tvb, offset);
+    offset += 1;
+    if ((len & 0x80) == 0x80) { // TODO To be refined, assume that cyphered text length is less than 65535 (2 bytes)
+      len = (guint16)(tvb_get_guint8(tvb, offset) << 8) | (guint16)tvb_get_guint8(tvb, offset + 1);
+      offset += 2;
+    }
+    //len = tvb_captured_length_remaining(tvb, offset);
     // Copy ciphered text bloc into memory for decrypting
     proto_tree_add_item(sh_tree, hf_gn_st_opaque, tvb, offset, len, FALSE);
     offset += len;
     
     proto_item_set_len(sh_ti, offset - sh_length);
+
+    if (g_options.enable_encryption_decode) {
+      printf("dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet: Start decryption");
+    }
+    
   }
 
   return offset;
@@ -2072,7 +2083,10 @@ proto_register_etsi_ieee1609dot2(void)
 				    {"IEEE 1609.2 Nonce", "gn.sec.enc.cyphered_data.aes128ccm.nonce", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}
 				  },
     { &hf_gn_sh_field_hashedid8,
-      {"HashedId8", "gn.sh.hashedid8", FT_UINT64, BASE_HEX, NULL, 0x00, NULL, HFILL}
+      {"HashedId8", "gn.sec.hashedid8", FT_UINT64, BASE_HEX, NULL, 0x00, NULL, HFILL}
+    },
+    { &hf_gn_st_opaque,
+      { "Opaque", "gn.sec.opaque", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL}
     },
   };
   
@@ -2121,8 +2135,8 @@ proto_register_etsi_ieee1609dot2(void)
   /* Register the protocol name and description */
   proto_etsi_ieee1609dot2 = proto_register_protocol (
 						     "ITS ETSI IEEE 1609dot2", /* name       */
-						     "etsi_ieee1609dot2",      /* short name */
-						     "etsi_ieee1609dot2"       /* abbrev     */
+						     "ITS ETSI IEEE 1609dot2",      /* short name */
+						     "ITS ETSI IEEE 1609dot2"       /* abbrev     */
 						     );
 
   /* Required function calls to register the header fields and subtrees used */
