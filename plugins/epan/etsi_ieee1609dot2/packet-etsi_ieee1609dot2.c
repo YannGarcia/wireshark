@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <ctype.h>
 
 #include <epan/proto.h>
 #include <epan/packet.h>
@@ -37,12 +38,13 @@
 #include <epan/prefs.h>
 #include <epan/decode_as.h>
 #include "epan/proto_data.h"
-#include <epan/uat.h>
 
 #include <wsutil/filesystem.h>
 #include <wsutil/file_util.h>
 #include <wsutil/str_util.h>
 #include <wsutil/strtoi.h>
+
+#include <wsutil/wsgcrypt.h>
 
 void proto_register_etsi_ieee1609dot2(void);
 void proto_reg_handoff_etsi_ieee1609dot2(void);
@@ -51,7 +53,8 @@ void proto_reg_handoff_etsi_ieee1609dot2(void);
 
 static int dissect_ieee1609dot2_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset);
 static int dissect_ieee1609dot2_content_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset);
-static int  dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, int hf);
+static int dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, int hf);
+static int decrypt_and_decode_pki_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, int len);
 
 #define ETSI_1609DOT2_VERSION 3
 
@@ -189,55 +192,30 @@ static const value_string st_1609dot2_hash_algorithm[] = {
 							  { 0, NULL}
 };
 
-/*-------------------------------------
- * UAT for ESP
- *-------------------------------------
- */
-/* UAT entry structure. */
-typedef struct {
-  guint8 protocol;
-  gchar *srcIP;
-  gchar *dstIP;
-  gchar *spi;
-
+/* Decrypt entry structure. */
+typedef struct { 
   guint8 encryption_algo;
-  gchar *encryption_key_string;
-  gchar *encryption_key;
-  gint encryption_key_length;
-  gboolean         cipher_hd_created;
-
-  guint8 authentication_algo;
-  gchar *authentication_key_string;
-  gchar *authentication_key;
-  gint authentication_key_length;
-} uat_etsi_ieee1609dot2_sa_record_t;
-
-//static uat_etsi_ieee1609dot2_sa_record_t *uat_etsi_ieee1609dot2_sa_records = NULL;
-
-/* Extra SA records that may be set programmatically */
-/* 'records' array is now allocated on the heap */
-#define MAX_EXTRA_SA_RECORDS 16
-typedef struct extra_etsi_ieee1609dot2_sa_records_t {
-  guint num_records;
-  uat_etsi_ieee1609dot2_sa_record_t *records;
-} extra_etsi_ieee1609dot2_sa_records_t;
-static extra_etsi_ieee1609dot2_sa_records_t extra_etsi_ieee1609dot2_sa_records;
-
-//static uat_t * etsi_ieee1609dot2_uat = NULL;
-//static guint num_sa_uat = 0;
+  guint8 encryption_compressed_key_mode;
+  gchar* encryption_compressed_key;
+  gchar* nonce;
+  gchar* tag;
+  gchar* encrypted_aes_symmetric_key;
+} decrypt_record_t;
+static decrypt_record_t g_decrypt_record = { 0xff, 0xff, NULL, NULL, NULL, NULL };
 
 /*************************************/
 /* Preference settings               */
 
 typedef struct etsi_ieee1609dot2_common_options {
   gboolean enable_encryption_decode;
-  const gchar* ts_certificate_filename;
-  const gchar* iut_certificate_filename;
+  const gchar* ts_private_enc_key;
+  const gchar* ts_public_enc_key;
+  const gchar* ts_public_sign_key;
+  const gchar* iut_private_enc_key;
+  const gchar* iut_public_enc_key;
+  const gchar* iut_public_sign_key;
 } etsi_ieee1609dot2_common_options_t;
-static etsi_ieee1609dot2_common_options_t g_options = { FALSE, NULL, NULL };
-static gboolean g_cert_loaded = FALSE;
-static FILE* g_cert_ts = NULL;
-static FILE* g_cert_iut = NULL;
+static etsi_ieee1609dot2_common_options_t g_options = { FALSE, NULL, NULL, NULL, NULL, NULL, NULL };
 
 
 
@@ -245,45 +223,40 @@ static void etsi_ieee1609dot2_cleanup(void)
 {
   printf(">>> ieee1609dot2_cleanup\n");
   
-  g_cert_loaded = FALSE;;
-
-  if (g_cert_ts != NULL) {
-    fclose(g_cert_ts);
-    g_cert_ts = NULL;
+  if (g_decrypt_record.encryption_algo != 0xff) {
+    g_decrypt_record.encryption_algo = 0xff;
+    /* FIXME wmem_free generate a trap :(
+    if (g_decrypt_record.encryption_compressed_key != NULL) {
+      wmem_free(wmem_packet_scope(), g_decrypt_record.encryption_compressed_key);
+      g_decrypt_record.encryption_compressed_key = NULL;
+    }
+    if (g_decrypt_record.nonce != NULL) {
+      wmem_free(wmem_packet_scope(), g_decrypt_record.nonce);
+      g_decrypt_record.nonce = NULL;
+    }
+    if (g_decrypt_record.tag != NULL) {
+      wmem_free(wmem_packet_scope(), g_decrypt_record.tag);
+      g_decrypt_record.tag = NULL;
+    }
+    if (g_decrypt_record.encrypted_aes_symmetric_key != NULL) {
+      wmem_free(wmem_packet_scope(), g_decrypt_record.encrypted_aes_symmetric_key);
+      g_decrypt_record.encrypted_aes_symmetric_key = NULL;
+      }*/
   }
-  if (g_cert_iut != NULL) {
-    fclose(g_cert_iut);
-    g_cert_iut = NULL;
-  }
-}
-
-static int ieee1609dot2_load_certificates()
-{
-  printf(">>> ieee1609dot2_load_certificates\n");
-  
-  g_cert_loaded = TRUE;
-
-  if (g_cert_ts != NULL) {
-    fclose(g_cert_ts);
-  }
-  if (g_cert_iut != NULL) {
-    fclose(g_cert_iut);
-  }
-  
-  g_cert_ts = ws_fopen(g_options.ts_certificate_filename, "r");
-  g_cert_iut = ws_fopen(g_options.iut_certificate_filename, "r");
-  
-  return 0;
 }
 
 static void ah_prompt(packet_info *pinfo, gchar *result)
 {
+  printf(">>> ah_prompt\n");
+  
   g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "ETSI IEEE 1609dot2 Protocol %u as",
 	     GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, proto_ah, pinfo->curr_layer_num)));
 }
 
 static gpointer ah_value(packet_info *pinfo)
 {
+  printf(">>> ah_value\n");
+  
   return p_get_proto_data(pinfo->pool, pinfo, proto_ah, pinfo->curr_layer_num);
 }
 
@@ -354,9 +327,15 @@ dissect_ieee1609dot2_eccP256CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
       proto_tree_add_item(sh_tree, hf_1609dot2_x_only, tvb, offset, 32, FALSE);
       offset += 32;
     } else if ((tag & 0x7f) == 0x02) { // Decode compressed-y-0
+      g_decrypt_record.encryption_compressed_key_mode = 0x02;
+      g_decrypt_record.encryption_compressed_key = wmem_alloc(wmem_packet_scope(), 32);
+      tvb_memcpy(tvb, (char*)g_decrypt_record.encryption_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_0, tvb, offset, 32, FALSE);
       offset += 32;
     } else if ((tag & 0x7f) == 0x03) { // Decode compressed-y-1
+      g_decrypt_record.encryption_compressed_key_mode = 0x03;
+      g_decrypt_record.encryption_compressed_key = wmem_alloc(wmem_packet_scope(), 32);
+      tvb_memcpy(tvb, (char*)g_decrypt_record.encryption_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_1, tvb, offset, 32, FALSE);
       offset += 32;
     } // TODO
@@ -1528,15 +1507,21 @@ dissect_ieee1609dot2_enc_data_key_data_packet(tvbuff_t *tvb, packet_info *pinfo,
     printf("dissect_ieee1609dot2_enc_data_key_data_packet: tag: '%x'\n", tag);
     offset += 1;
     if ((tag & 0x7f) == 0x00) {
+      g_decrypt_record.encryption_algo = 0;
       offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecies_nistp_256, ett_1609dot2_base_public_enc_key);
     } else {
+      g_decrypt_record.encryption_algo = 1;
       offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecies_brainpoolp_256, ett_1609dot2_base_public_enc_key);
     }
     // OCTET STRING (SIZE (16))
-    proto_tree_add_item(sh_tree, hf_1609dot2_c, tvb, offset, 16, FALSE);
+    g_decrypt_record.encrypted_aes_symmetric_key = wmem_alloc(wmem_packet_scope(), 16);
+    tvb_memcpy(tvb, (char*)g_decrypt_record.encrypted_aes_symmetric_key, offset, 16);
+    proto_tree_add_item(sh_tree, hf_1609dot2_c, tvb, offset, 16, FALSE); /* Encrypted AES symmetric key */
     offset += 16;
     // OCTET STRING (SIZE (16))
-    proto_tree_add_item(sh_tree, hf_1609dot2_t, tvb, offset, 16, FALSE);
+    g_decrypt_record.tag = wmem_alloc(wmem_packet_scope(), 16);
+    tvb_memcpy(tvb, (char*)g_decrypt_record.tag, offset, 16);
+    proto_tree_add_item(sh_tree, hf_1609dot2_t, tvb, offset, 16, FALSE); /* Tag */
     offset += 16;    
 
     proto_item_set_len(sh_ti, offset - sh_length);
@@ -1640,7 +1625,7 @@ dissect_ieee1609dot2_recipient_info_data_packet(tvbuff_t *tvb, packet_info *pinf
 } // End of function dissect_ieee1609dot2_recipient_info_data_packet
 
 static int
-dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
+dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 {
   proto_tree *sh_tree = NULL;
   proto_item *sh_ti = NULL;
@@ -1656,6 +1641,8 @@ dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_i
     sh_length = offset;
     
     // OCTET STRING (SIZE (12))
+    g_decrypt_record.nonce = wmem_alloc(wmem_packet_scope(), 12);
+    tvb_memcpy(tvb, (char*)g_decrypt_record.nonce, offset, 12);
     proto_tree_add_item(sh_tree, hf_1609dot2_nonce, tvb, offset, 12, FALSE);
     offset += 12;
     // Ciphered text
@@ -1665,17 +1652,14 @@ dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_i
       len = (guint16)(tvb_get_guint8(tvb, offset) << 8) | (guint16)tvb_get_guint8(tvb, offset + 1);
       offset += 2;
     }
-    //len = tvb_captured_length_remaining(tvb, offset);
-    // Copy ciphered text bloc into memory for decrypting
     proto_tree_add_item(sh_tree, hf_gn_st_opaque, tvb, offset, len, FALSE);
-    offset += len;
-    
-    proto_item_set_len(sh_ti, offset - sh_length);
-
     if (g_options.enable_encryption_decode) {
       printf("dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet: Start decryption");
+      decrypt_and_decode_pki_message(tvb, pinfo, tree, offset, len);
     }
     
+    offset += len;    
+    proto_item_set_len(sh_ti, offset - sh_length);
   }
 
   return offset;
@@ -1721,16 +1705,14 @@ dissect_ieee1609dot2_encrypted_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_
   printf(">>> dissect_ieee1609dot2_encrypted_data_packet: offset=0x%02x\n", offset);
 
   printf("dissect_ieee1609dot2_encrypted_data_packet: enable_encryption_decode=%x\n", g_options.enable_encryption_decode);
-  printf("dissect_ieee1609dot2_encrypted_data_packet: ts_certificate_filename=%s\n", (g_options.ts_certificate_filename == NULL) ? "(null)" : g_options.ts_certificate_filename);
-  printf("dissect_ieee1609dot2_encrypted_data_packet: iut_certificate_filename=%s\n", (g_options.iut_certificate_filename == NULL) ? "(null)" : g_options.iut_certificate_filename);
+  printf("dissect_ieee1609dot2_encrypted_data_packet: ts_private_enc_key=%s\n", (g_options.ts_private_enc_key == NULL) ? "(null)" : g_options.ts_private_enc_key);
+  printf("dissect_ieee1609dot2_encrypted_data_packet: ts_public_enc_key=%s\n", (g_options.ts_public_enc_key == NULL) ? "(null)" : g_options.ts_public_enc_key);
+  printf("dissect_ieee1609dot2_encrypted_data_packet: iut_private_enc_key=%s\n", (g_options.iut_private_enc_key == NULL) ? "(null)" : g_options.iut_private_enc_key);
+  printf("dissect_ieee1609dot2_encrypted_data_packet: iut_public_enc_key=%s\n", (g_options.iut_public_enc_key == NULL) ? "(null)" : g_options.iut_public_enc_key);
 
-  if (!g_cert_loaded && g_options.enable_encryption_decode && (g_options.ts_certificate_filename != NULL) && (g_options.iut_certificate_filename != NULL)) {
-    g_options.enable_encryption_decode = (gboolean)(ieee1609dot2_load_certificates() == 0);
-  }
-  
-  if (tree) { /* we are being asked for details */
+  if (tree) { /* we are being asked for details */  
     gint sh_len;
-    
+	
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_encrypted_data_packet, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_encrypted_data_packet);
 
@@ -1813,7 +1795,6 @@ dissect_ieee1609dot2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
   proto_item *sh_ti = NULL;
   guint8 version = 0;
   gint offset = 0;
-  const char *str_packet_type = NULL;
 
   printf(">>> dissect_ieee1609dot2: offset=0x%02x\n", offset);
   /* Check version */
@@ -1830,7 +1811,7 @@ dissect_ieee1609dot2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
   if (tree) { /* we are being asked for details */
     /* Main tree */
     sh_ti = proto_tree_add_item(tree, proto_etsi_ieee1609dot2, tvb, offset, -1, FALSE);
-    proto_item_append_text(sh_ti, ": %s", str_packet_type);
+    proto_item_append_text(sh_ti, ": ETSI IEEE 1609dot2 Protocol");
     sh_tree = proto_item_add_subtree(sh_ti, ett_proto_etsi_ieee1609dot2);
 
     /* Dissect*/
@@ -1841,39 +1822,10 @@ dissect_ieee1609dot2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
   return offset;
 } // End of function dissect_ieee1609dot2
 
-static void uat_etsi_ieee1609dot2_sa_record_free_cb(void*r) {
-  uat_etsi_ieee1609dot2_sa_record_t* rec = (uat_etsi_ieee1609dot2_sa_record_t*)r;
-
-  printf(">>> etsi_ieee1609dot2_sa_record_free_cb\n");
-  
-  g_free(rec->srcIP);
-  g_free(rec->dstIP);
-  g_free(rec->spi);
-  g_free(rec->encryption_key_string);
-  g_free(rec->encryption_key);
-  g_free(rec->authentication_key_string);
-  g_free(rec->authentication_key);
-
-  if (rec->cipher_hd_created) {
-    // TODO gcry_cipher_close(rec->cipher_hd);
-    rec->cipher_hd_created = FALSE;
-  }
-}
 
 static void etsi_ieee1609dot2_cleanup_protocol(void)
 {
-  /* Free any SA records added by other dissectors */
-  guint n;
-
   printf(">>> etsi_ieee1609dot2_cleanup_protocol\n");  
-  for (n=0; n < extra_etsi_ieee1609dot2_sa_records.num_records; n++) {
-    uat_etsi_ieee1609dot2_sa_record_free_cb(&(extra_etsi_ieee1609dot2_sa_records.records[n]));
-  }
-
-  /* Free overall block of records */
-  g_free(extra_etsi_ieee1609dot2_sa_records.records);
-  extra_etsi_ieee1609dot2_sa_records.records = NULL;
-  extra_etsi_ieee1609dot2_sa_records.num_records = 0;
 }
 
 /* Register the protocol with Wireshark */
@@ -2133,10 +2085,15 @@ proto_register_etsi_ieee1609dot2(void)
   };
 
   /* Register the protocol name and description */
+  /*proto_etsi_ieee1609dot2 = proto_register_protocol (
+						     "ItsEtsiIEEE1609dot2",
+						     "ItsEtsiIEEE1609dot2",
+						     "ItsEtsiIEEE1609dot2"
+						     );*/
   proto_etsi_ieee1609dot2 = proto_register_protocol (
-						     "ITS ETSI IEEE 1609dot2", /* name       */
-						     "ITS ETSI IEEE 1609dot2",      /* short name */
-						     "ITS ETSI IEEE 1609dot2"       /* abbrev     */
+						     "Its Etsi IEEE 1609dot2", /* name       */
+						     "Its Etsi IEEE 1609dot2", /* short name */
+						     "its_etsi_ieee_1609dot2"  /* abbrev     */
 						     );
 
   /* Required function calls to register the header fields and subtrees used */
@@ -2152,20 +2109,42 @@ proto_register_etsi_ieee1609dot2(void)
                                  "TODO1.",
                                  &(g_options.enable_encryption_decode)
 				 );
-  prefs_register_filename_preference(etsi_ieee1609dot2_module,
-				     "ts_certificate_filename",
-				     "TS Certificate ",
-				     "Test System certificate to use to attempt to decrypt ETSI IEEE 1609dot2 PKI payloads",
-				     &(g_options.ts_certificate_filename),
-				     FALSE
-				     );
-  prefs_register_filename_preference(etsi_ieee1609dot2_module,
-				     "iut_certificate_filename",
-				     "IUT Certificate",
-				     "IUT certificate to use to attempt to decrypt ETSI IEEE 1609dot2 PKI payloads",
-				     &(g_options.iut_certificate_filename),
-				     FALSE
-				     );  
+  prefs_register_string_preference(etsi_ieee1609dot2_module,
+				   "ts_private_enc_key",
+				   "TS Private encryption key ",
+				   "Test System private encryption key",
+				   &(g_options.ts_private_enc_key)
+				   );
+  prefs_register_string_preference(etsi_ieee1609dot2_module,
+				   "ts_public_enc_key",
+				   "TS Public encryption key ",
+				   "Test System public encryption key",
+				   &(g_options.ts_public_enc_key)
+				   );
+  prefs_register_string_preference(etsi_ieee1609dot2_module,
+				   "ts_public_sign_key",
+				   "TS Public verification key ",
+				   "Test System public verification key",
+				   &(g_options.ts_public_enc_key)
+				   );
+  prefs_register_string_preference(etsi_ieee1609dot2_module,
+				   "iut_private_enc_key",
+				   "IUT Private encryption key ",
+				   "IUT private encryption key",
+				   &(g_options.iut_private_enc_key)
+				   );
+  prefs_register_string_preference(etsi_ieee1609dot2_module,
+				   "iut_public_enc_key",
+				   "IUT Public encryption key ",
+				   "IUT public encryption key",
+				   &(g_options.iut_public_enc_key)
+				   );
+  prefs_register_string_preference(etsi_ieee1609dot2_module,
+				   "iut_public_sign_key",
+				   "IUT Public verification key ",
+				   "TIUT public verification key",
+				   &(g_options.iut_public_enc_key)
+				   );
   
   register_cleanup_routine(&etsi_ieee1609dot2_cleanup_protocol);
   register_decode_as(&ah_da);
@@ -2195,3 +2174,99 @@ proto_reg_handoff_etsi_ieee1609dot2(void)
   /*gn_handle = find_dissector("gn");
     dissector_add_uint("gn.bnh", 2, etsi_ieee1609dot2_handle);*/
 }
+
+static
+unsigned char* hex_to_string(const char* input)
+{
+  char a;
+  size_t i, len;
+  unsigned char *retval = NULL;
+  if (!input) return NULL;
+  if((len = strlen(input)) & 1) return NULL;
+  retval = (gchar*)malloc(len >> 1);
+  for ( i = 0; i < len; i ++) {
+    a = toupper(input[i]);
+    if (!isxdigit(a)) break;
+    if (isdigit(a)) a -= '0';
+    else a = a - 'A' + 0x0A;
+    
+    if (i & 1) retval[i >> 1] |= a;
+    else retval[i >> 1] = a<<4;
+  }
+  if (i < len) {
+    free(retval);
+    retval = NULL;
+  }
+  
+  return retval;
+}
+
+static int
+decrypt_and_decode_pki_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree _U_, int offset, int len)
+{
+  unsigned char* ts_private_key;
+  unsigned char* ts_public_enc_key;
+  unsigned char* ts_public_sign_key;
+  unsigned char* iut_private_key;
+  unsigned char* iut_public_enc_key;
+  unsigned char* iut_public_sign_key;
+  gcry_cipher_hd_t cipher;
+  gcry_error_t	err;
+  gcry_sexp_t param = NULL;
+  //gcry_sexp_t key = NULL;
+  char* buffer = NULL;
+  char* clear_data = NULL;
+  //tvbuff_t* clear_tvb = NULL;
+
+  printf(">>> decrypt_and_decode_pki_message\n");
+  
+  buffer = (char*)tvb_memdup(wmem_packet_scope(), tvb, offset, len);
+  printf("decrypt_and_decode_pki_message: algo: %02x\n", g_decrypt_record.encryption_algo);
+  printf("decrypt_and_decode_pki_message: comp.mode: %02x\n", g_decrypt_record.encryption_compressed_key_mode);
+  printf("decrypt_and_decode_pki_message: buffer: %02x - %02x - %02x - %02x - %02x\n", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+  
+  // 1. Convert hexadecimal key into binary
+  ts_private_key = hex_to_string(g_options.ts_private_enc_key);
+  printf("decrypt_and_decode_pki_message: ts_private_key: %02x - %02x - %02x - %02x - %02x\n", ts_private_key[0], ts_private_key[1], ts_private_key[2], ts_private_key[3], ts_private_key[4]);
+  ts_public_enc_key = hex_to_string(g_options.ts_public_enc_key);
+  ts_public_sign_key = hex_to_string(g_options.ts_public_sign_key);
+  iut_private_key = hex_to_string(g_options.iut_private_enc_key);
+  printf("decrypt_and_decode_pki_message: iut_private_key: %02x - %02x - %02x - %02x - %02x\n", iut_private_key[0], iut_private_key[1], iut_private_key[2], iut_private_key[3], iut_private_key[4]);
+  iut_public_enc_key = hex_to_string(g_options.iut_public_enc_key);
+  iut_public_sign_key = hex_to_string(g_options.iut_public_sign_key);
+  
+  // 2. Convert encryption keys into S-expression
+  
+  err = gcry_sexp_build(&param,
+			NULL,
+			"(genkey(ecdh(curve %s)))",
+			(g_decrypt_record.encryption_algo == 0) ? "NIST P-256" : "BRAINPOOL P-256");
+  if (gcry_err_code(err)) {
+    free(ts_private_key);
+    fprintf(stderr, "decrypt_and_decode_pki_message: Failed to retrieve the curve\n");
+    return -1;
+  }
+  
+  // 1. Derive ephemeral key
+
+  // 2. Decrypt the message
+  err = gcry_cipher_open(&cipher, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CCM, 0);
+  if (gcry_err_code(err)) {
+    free(ts_private_key);
+    fprintf(stderr, "decrypt_and_decode_pki_message: Failed to retrieve cyphering handle\n");
+    return -1;
+  }
+  clear_data = (char *)wmem_alloc(wmem_packet_scope(), len); /* Encrypted and clear messages have the same length */  
+  // TODO Decrypt
+  gcry_cipher_close(cipher);
+  gcry_sexp_release(param);
+  free(ts_private_key);
+  /* clear_data contains the decrypted data */
+  
+  //clear_tvb = tvb_new_child_real_data(tvb, (const guint8 *)clear_data, 0, len);
+  
+  /* now try and decode it */
+  //dissect_ieee1609dot2_data_packet(clear_tvb, pinfo, tree, 0);
+  
+  return 0;
+} // End of function decrypt_and_decode_pki_message
