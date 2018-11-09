@@ -2291,10 +2291,11 @@ dissect_ieee1609dot2_ssp_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     /* TODO Check if both case can be unified */
     /* Octetstring */
     if ((tag & 0x7f) == 0x00) {
-      guint8 full_len;
+      /*guint8 full_len;*/
       guint8 len;
 
-      full_len = tvb_get_guint8(tvb, offset);
+      /*full_len = tvb_get_guint8(tvb, offset);
+        printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len);*/
       offset += 1;
       len = tvb_get_guint8(tvb, offset);
       offset += 1;
@@ -2305,11 +2306,11 @@ dissect_ieee1609dot2_ssp_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     }
     /* SspBitmap */
     if ((tag & 0x7f) == 0x01) {
-      guint8 full_len;
+      /*guint8 full_len;*/
       guint8 len;
 
-      full_len = tvb_get_guint8(tvb, offset);
-      printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len);
+      /*full_len = tvb_get_guint8(tvb, offset);
+        printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len);*/
       offset += 1;
       len = tvb_get_guint8(tvb, offset);
       printf("dissect_ieee1609dot2_ssp_packet: len=%d\n", len);
@@ -3129,7 +3130,7 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
 
   printf(">>> dissect_ieee1609dot2_signed_data_packet: offset=0x%02x\n", offset);
   if (tree) { /* we are being asked for details */
-    guint8 tag;
+    /* guint8 tag; */
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
@@ -3138,7 +3139,7 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signed_data_packet);
 
     /* HashAlgoritm */
-    tag = tvb_get_guint8(tvb, offset);
+    /* tag = tvb_get_guint8(tvb, offset); */
     proto_tree_add_item(sh_tree, hf_1609dot2_hash_algorithm, tvb, offset, 1, FALSE);
     offset += 1;
     

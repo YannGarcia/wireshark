@@ -328,13 +328,13 @@ dissect_ieee1609dot2_eccP256CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
       offset += 32;
     } else if ((tag & 0x7f) == 0x02) { // Decode compressed-y-0
       g_decrypt_record.encryption_compressed_key_mode = 0x02;
-      g_decrypt_record.encryption_compressed_key = wmem_alloc(wmem_packet_scope(), 32);
+      g_decrypt_record.encryption_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
       tvb_memcpy(tvb, (char*)g_decrypt_record.encryption_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_0, tvb, offset, 32, FALSE);
       offset += 32;
     } else if ((tag & 0x7f) == 0x03) { // Decode compressed-y-1
       g_decrypt_record.encryption_compressed_key_mode = 0x03;
-      g_decrypt_record.encryption_compressed_key = wmem_alloc(wmem_packet_scope(), 32);
+      g_decrypt_record.encryption_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
       tvb_memcpy(tvb, (char*)g_decrypt_record.encryption_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_1, tvb, offset, 32, FALSE);
       offset += 32;
@@ -624,10 +624,11 @@ dissect_ieee1609dot2_ssp_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     /* TODO Check if both case can be unified */
     /* Octetstring */
     if ((tag & 0x7f) == 0x00) {
-      guint8 full_len;
+      /* guint8 full_len; */
       guint8 len;
 
-      full_len = tvb_get_guint8(tvb, offset);
+      /* full_len = tvb_get_guint8(tvb, offset);
+        printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len); */
       offset += 1;
       len = tvb_get_guint8(tvb, offset);
       offset += 1;
@@ -638,11 +639,11 @@ dissect_ieee1609dot2_ssp_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     }
     /* SspBitmap */
     if ((tag & 0x7f) == 0x01) {
-      guint8 full_len;
+      /* guint8 full_len; */
       guint8 len;
 
-      full_len = tvb_get_guint8(tvb, offset);
-      printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len);
+      /* full_len = tvb_get_guint8(tvb, offset);
+         printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len); */
       offset += 1;
       len = tvb_get_guint8(tvb, offset);
       printf("dissect_ieee1609dot2_ssp_packet: len=%d\n", len);
@@ -1297,26 +1298,26 @@ dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_t
 static int
 dissect_ieee1609dot2_unsecured_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
 {
-  proto_tree *sh_tree = NULL;
-  proto_item *sh_ti = NULL;
+  /* proto_tree *sh_tree = NULL; */
+  /* proto_item *sh_ti = NULL; */
 
   printf(">>> dissect_ieee1609dot2_unsecured_data_packet: offset=0x%02x\n", offset);
   //printf("dissect_ieee1609dot2_unsecured_data_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(tvb, offset), tvb_get_guint8(tvb, offset + 1), tvb_get_guint8(tvb, offset + 2), tvb_get_guint8(tvb, offset + 3), tvb_get_guint8(tvb, offset + 4));
   if (tree) { /* we are being asked for details */
     //guint8 tag;
     gint len;
-    tvbuff_t *next_tvb;
+    /* tvbuff_t *next_tvb; */
     
     len = tvb_get_guint8(tvb, offset);
     offset += 1;
     printf("dissect_ieee1609dot2_unsecured_data_packet: len = %d - offset = %d\n", len, offset);
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
+    /* TODO Dissect GN Packet
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_unsecured_data_packet, tvb, offset, len, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_unsecured_content);
 
-    /* Dissect GN Packet */
     next_tvb = tvb_new_subset_length(tvb, offset, len);
-    // TODO Call GN codec dissect_unsecured_packet(next_tvb, pinfo, sh_tree, 0);
+    Call GN codec dissect_unsecured_packet(next_tvb, pinfo, sh_tree, 0); */
     offset += len;
   }
   
@@ -1462,7 +1463,7 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
 
   printf(">>> dissect_ieee1609dot2_signed_data_packet: offset=0x%02x\n", offset);
   if (tree) { /* we are being asked for details */
-    guint8 tag;
+    /* guint8 tag; */
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
@@ -1471,7 +1472,7 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signed_data_packet);
 
     /* HashAlgoritm */
-    tag = tvb_get_guint8(tvb, offset);
+    /* tag = tvb_get_guint8(tvb, offset); */
     proto_tree_add_item(sh_tree, hf_1609dot2_hash_algorithm, tvb, offset, 1, FALSE);
     offset += 1;
     
@@ -1514,12 +1515,12 @@ dissect_ieee1609dot2_enc_data_key_data_packet(tvbuff_t *tvb, packet_info *pinfo,
       offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecies_brainpoolp_256, ett_1609dot2_base_public_enc_key);
     }
     // OCTET STRING (SIZE (16))
-    g_decrypt_record.encrypted_aes_symmetric_key = wmem_alloc(wmem_packet_scope(), 16);
+    g_decrypt_record.encrypted_aes_symmetric_key = (gchar*)wmem_alloc(wmem_packet_scope(), 16);
     tvb_memcpy(tvb, (char*)g_decrypt_record.encrypted_aes_symmetric_key, offset, 16);
     proto_tree_add_item(sh_tree, hf_1609dot2_c, tvb, offset, 16, FALSE); /* Encrypted AES symmetric key */
     offset += 16;
     // OCTET STRING (SIZE (16))
-    g_decrypt_record.tag = wmem_alloc(wmem_packet_scope(), 16);
+    g_decrypt_record.tag = (gchar*)wmem_alloc(wmem_packet_scope(), 16);
     tvb_memcpy(tvb, (char*)g_decrypt_record.tag, offset, 16);
     proto_tree_add_item(sh_tree, hf_1609dot2_t, tvb, offset, 16, FALSE); /* Tag */
     offset += 16;    
@@ -1641,7 +1642,7 @@ dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_i
     sh_length = offset;
     
     // OCTET STRING (SIZE (12))
-    g_decrypt_record.nonce = wmem_alloc(wmem_packet_scope(), 12);
+    g_decrypt_record.nonce = (gchar*)wmem_alloc(wmem_packet_scope(), 12);
     tvb_memcpy(tvb, (char*)g_decrypt_record.nonce, offset, 12);
     proto_tree_add_item(sh_tree, hf_1609dot2_nonce, tvb, offset, 12, FALSE);
     offset += 12;
@@ -2205,10 +2206,10 @@ unsigned char* data_from_hex(const char* input, size_t *size)
 static void
 show_hex(const char *prefix, const void *buffer, size_t buflen)
 {
-  const unsigned char *s;
+  const unsigned char*s;
 
   fprintf (stderr, "%s: ", prefix);
-  for (s= buffer; buflen; buflen--, s++)
+  for (s= (unsigned char*)buffer; buflen; buflen--, s++)
     fprintf (stderr, "%02x", *s);
   putc ('\n', stderr);
 }
@@ -2216,13 +2217,13 @@ show_hex(const char *prefix, const void *buffer, size_t buflen)
 static void
 show_sexp(const char *prefix, gcry_sexp_t a)
 {
-  char *buf;
+  char* buf;
   size_t size;
 
   if (prefix)
     fputs (prefix, stderr);
   size = gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, NULL, 0);
-  buf = gcry_xmalloc (size);
+  buf = (char*)gcry_xmalloc (size);
 
   gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, buf, size);
   fprintf (stderr, "%.*s", (int)size, buf);
@@ -2230,7 +2231,7 @@ show_sexp(const char *prefix, gcry_sexp_t a)
 }
 
 static int
-decrypt_and_decode_pki_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree _U_, int offset, int len)
+decrypt_and_decode_pki_message(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, int offset _U_, int len _U_) // TODO Remove _U_
 {
   size_t size = 0;                                   /* Working buiffer size */
   //char *buffer = NULL;                               /* Working buffer */
@@ -2249,13 +2250,13 @@ decrypt_and_decode_pki_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
   gcry_sexp_t gcry_ts_public_key = NULL;             /* Public key s-exp */
   gcry_cipher_hd_t cipher = NULL;
   //gcry_sexp_t key = NULL;
-  char* w_buffer = NULL;                             /* Wireshark decoding buffer containing cyphered data */
-  char* clear_data = NULL;
+  //char* w_buffer = NULL;                             /* Wireshark decoding buffer containing cyphered data */
+  /* char* clear_data = NULL; */
   //tvbuff_t* clear_tvb = NULL;
 
   printf(">>> decrypt_and_decode_pki_message\n");
   
-  w_buffer = (char*)tvb_memdup(wmem_packet_scope(), tvb, offset, len);
+  /* w_buffer = (char*)tvb_memdup(wmem_packet_scope(), tvb, offset, len); */
   printf("decrypt_and_decode_pki_message: algo: %02x\n", g_decrypt_record.encryption_algo);
   printf("decrypt_and_decode_pki_message: comp.mode: %02x\n", g_decrypt_record.encryption_compressed_key_mode);
   
@@ -2346,11 +2347,12 @@ decrypt_and_decode_pki_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
     fprintf(stderr, "decrypt_and_decode_pki_message: Failed to retrieve cyphering handle\n");
     goto decrypt_and_decode_pki_message_label;
   }
-  clear_data = (char *)wmem_alloc(wmem_packet_scope(), len); /* Encrypted and clear messages have the same length */  
+  /* clear_data = (char*)wmem_alloc(wmem_packet_scope(), len); /\* Encrypted and clear messages have the same length *\/   */
   // TODO Decrypt
   gcry_cipher_close(cipher);
 
   // Release resources
+  /* free(clear_data); */
   gcry_sexp_release(gcry_ts_public_key);
   gcry_sexp_release(gcry_ts_private_key);
   free(ts_private_key);
