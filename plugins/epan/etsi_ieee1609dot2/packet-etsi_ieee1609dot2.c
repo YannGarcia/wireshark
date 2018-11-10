@@ -219,6 +219,225 @@ static etsi_ieee1609dot2_common_options_t g_options = { FALSE, NULL, NULL, NULL,
 
 
 
+
+
+static void
+show_hex(const char *prefix, const void *buffer, size_t buflen)
+{
+  const unsigned char*s;
+
+  fprintf (stderr, "%s: ", prefix);
+  for (s= (unsigned char*)buffer; buflen; buflen--, s++)
+    fprintf (stderr, "%02x", *s);
+  putc ('\n', stderr);
+}
+
+static
+unsigned char* hex_to_bin(const char* input, size_t* buffer_length) {
+  char a;
+  size_t i, len;
+  unsigned char *retval = NULL;
+  if (!input) return NULL;
+  if((len = strlen(input)) & 1) return NULL;
+  retval = (unsigned char*)gcry_malloc(len >> 1);
+  for ( i = 0; i < len; i ++) {
+    a = toupper(input[i]);
+    if (!isxdigit(a)) break;
+    if (isdigit(a)) a -= '0';
+    else a = a - 'A' + 0x0A; 
+   
+    if (i & 1) retval[i >> 1] |= a;
+    else retval[i >> 1] = a<<4;
+  }
+  if (i < len) {
+    gcry_free(retval);
+    retval = NULL;
+  }
+  *buffer_length = len >> 1;
+
+  return retval;
+}
+
+static void
+show_sexp(const char *prefix, gcry_sexp_t a)
+{
+  char* buf;
+  size_t size;
+
+  if (prefix)
+    fputs (prefix, stderr);
+  size = gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, NULL, 0);
+  buf = (char*)gcry_xmalloc (size);
+
+  gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, buf, size);
+  fprintf (stderr, "%.*s", (int)size, buf);
+  gcry_free (buf);
+}
+
+static void
+show_mpi(const char *text, const char *text2, gcry_mpi_t a)
+{
+  gcry_error_t err;
+  char *buf;
+  void *bufaddr = &buf;
+
+  err = gcry_mpi_aprint(GCRYMPI_FMT_HEX, bufaddr, NULL, a);
+  if (err)
+    fprintf(stderr, "%s%s: [error printing number: %s]\n",
+             text, text2? text2:"", gcry_strerror (err));
+  else
+    {
+      fprintf(stderr, "%s%s: %s\n", text, text2? text2:"", buf);
+      gcry_free (buf);
+    }
+}
+
+static int
+compressed_hex_key_to_sexp(const char* p_comp_key, const size_t p_comp_key_size, const int p_comp_mode, const char* p_curve, const char* p_algo, gcry_sexp_t* p_key) {
+  unsigned char* x_buffer = NULL;
+  unsigned char* y_buffer = NULL;
+  unsigned char* xy_buffer = NULL;
+  size_t buffer_size;
+  gcry_sexp_t keyparm = NULL;
+  gcry_sexp_t key = NULL, private_key = NULL, e_key = NULL;
+  
+  gcry_ctx_t ctx = NULL;
+  gcry_mpi_t a, b, p, p_plus_1, p_minus_5, x, q, r;
+  gcry_mpi_t two, three, four, x_3, axb, y_2, y;
+    
+  gcry_error_t rc;
+
+  printf(">>> compressed_hex_key_to_sexp: %zu - %d - %s - %s\n", p_comp_key_size, p_comp_mode, p_curve, p_algo);
+  show_hex(">> compressed_hex_key_to_sexp: ", p_comp_key, p_comp_key_size);
+  
+  // Extract (p, a, b) parameters from curve
+  if ((rc = gcry_sexp_build (&keyparm, NULL, "(genkey(ecc(curve %s)(flags param)))", p_curve)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -1;
+  }
+  show_sexp("keyparm: ", keyparm);
+  if ((rc = gcry_pk_genkey(&key, keyparm)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -2;
+  }
+  private_key = gcry_sexp_find_token(key, "private-key", 0);
+  if ((rc = gcry_mpi_ec_new (&ctx, private_key, NULL)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -3;
+  }
+  if ((a = gcry_mpi_ec_get_mpi ("a", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -4;
+  }
+  if ((b = gcry_mpi_ec_get_mpi ("b", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -5;
+  }
+  if ((p = gcry_mpi_ec_get_mpi ("p", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -6;
+  }
+  gcry_ctx_release (ctx);
+  // Initialise x public key
+  buffer_size = p_comp_key_size;
+  x_buffer = gcry_malloc(buffer_size);
+  if (x_buffer == NULL) {
+    printf("Failed to allocate memory\n");
+    return -7;
+  }
+  memcpy((void*)x_buffer, (const void*)p_comp_key, buffer_size);
+  if ((rc = gcry_sexp_build(&e_key, NULL, "(e-key(x %b))", buffer_size, x_buffer)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -8;
+  }
+  if ((x = gcry_sexp_nth_mpi(gcry_sexp_find_token(e_key, "x", 0), 1, GCRYMPI_FMT_USG)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -9;
+  }
+  gcry_sexp_release(e_key);
+  
+  /* Ecc curve equation: y^2=x^3+a*x+b */
+  /* Compute y^2 */
+  two   = gcry_mpi_set_ui (NULL, 2);
+  three = gcry_mpi_set_ui (NULL, 3);
+  four = gcry_mpi_set_ui (NULL, 4);
+  x_3   = gcry_mpi_new (0);
+  axb   = gcry_mpi_new (0);
+  y_2   = gcry_mpi_new (0);
+  gcry_mpi_powm (x_3, x, three, p); // w = b^e \bmod m. 
+  gcry_mpi_mulm (axb, a, x, p);
+  gcry_mpi_addm (axb, axb, b, p);
+  gcry_mpi_addm (y_2, x_3, axb, p);
+  show_mpi("y_2", "", y_2);
+
+  /* Compute sqrt(y^2): two solutions */
+  q     = gcry_mpi_new (0);
+  r     = gcry_mpi_new (0);
+  y     = gcry_mpi_new (0);
+  if (p_comp_mode == 0) {
+    /* Solution one: y = p + 1 / 4 */
+    p_plus_1   = gcry_mpi_new (0);
+    gcry_mpi_add_ui(p_plus_1, p, 1);
+    gcry_mpi_div(q, r, p_plus_1, four, 0);
+    gcry_mpi_release(p_plus_1);
+  } else {
+    /* Solution one: p - 5 / 4 */
+    p_minus_5  = gcry_mpi_new (0);
+    gcry_mpi_sub_ui(p_minus_5, p, 5);
+    gcry_mpi_div(q, r, p_minus_5, four, 0);
+    gcry_mpi_release(p_minus_5);
+  }
+  gcry_mpi_powm(y, y_2, q, p);
+  show_mpi("y", "", y);
+  gcry_mpi_release (four);
+  gcry_mpi_release (q);
+  gcry_mpi_release (r);
+  gcry_mpi_release (y_2);
+
+  //show_hex(x_buffer, buffer_size, "x_buffer="),
+  y_buffer = gcry_malloc(buffer_size);
+  gcry_mpi_print (GCRYMPI_FMT_USG, y_buffer, buffer_size, NULL, y);
+  //show_hex(y_buffer, buffer_size, "y_buffer="),
+  xy_buffer = gcry_malloc(2 * buffer_size);
+  memcpy((void*)xy_buffer, (const void*)x_buffer, buffer_size);
+  memcpy((void*)(char*)(xy_buffer + buffer_size), (const void*)y_buffer, buffer_size);
+  //show_hex(xy_buffer, 2 * buffer_size, "xy_buffer=");
+
+  if (strcmp(p_algo, "ecdsa") == 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecdsa(curve %s)(q %b)))", p_curve, 2 * buffer_size, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -10;
+    }
+  } else {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(key-data(public-key(ecdh(curve %s)(q %b))))", p_curve, 2 * buffer_size, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -11;
+    }
+  }
+  show_sexp("compressed_hex_key_to_sexp: p_key=", *p_key);
+  
+  /* Release resources */
+  gcry_free(x_buffer);
+  gcry_free(y_buffer);
+  gcry_free(xy_buffer);
+  gcry_mpi_release(x);
+  gcry_mpi_release(y);
+
+  gcry_mpi_release(two);
+  gcry_mpi_release(three);
+  gcry_mpi_release(a);
+  gcry_mpi_release(b);
+  gcry_mpi_release(p);
+  gcry_mpi_release(x_3);
+  gcry_mpi_release(axb);
+  
+  gcry_sexp_release(private_key);
+  gcry_sexp_release(key);
+  gcry_sexp_release(keyparm);
+ 
+  return 0;
+} // End of function compressed_hex_key_to_sexp
+
 static void etsi_ieee1609dot2_cleanup(void)
 {
   printf(">>> ieee1609dot2_cleanup\n");
@@ -2176,60 +2395,6 @@ proto_reg_handoff_etsi_ieee1609dot2(void)
     dissector_add_uint("gn.bnh", 2, etsi_ieee1609dot2_handle);*/
 }
 
-static
-unsigned char* data_from_hex(const char* input, size_t *size)
-{
-  char a;
-  size_t i, len;
-  unsigned char *retval = NULL;
-  if (!input) return NULL;
-  if((len = strlen(input)) & 1) return NULL;
-  retval = (gchar*)malloc(len >> 1);
-  for ( i = 0; i < len; i ++) {
-    a = toupper(input[i]);
-    if (!isxdigit(a)) break;
-    if (isdigit(a)) a -= '0';
-    else a = a - 'A' + 0x0A;
-    
-    if (i & 1) retval[i >> 1] |= a;
-    else retval[i >> 1] = a<<4;
-  }
-  if (i < len) {
-    free(retval);
-    retval = NULL;
-  }
-  *size = len >> 1;
-  
-  return retval;
-}
-
-static void
-show_hex(const char *prefix, const void *buffer, size_t buflen)
-{
-  const unsigned char*s;
-
-  fprintf (stderr, "%s: ", prefix);
-  for (s= (unsigned char*)buffer; buflen; buflen--, s++)
-    fprintf (stderr, "%02x", *s);
-  putc ('\n', stderr);
-}
-
-static void
-show_sexp(const char *prefix, gcry_sexp_t a)
-{
-  char* buf;
-  size_t size;
-
-  if (prefix)
-    fputs (prefix, stderr);
-  size = gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, NULL, 0);
-  buf = (char*)gcry_xmalloc (size);
-
-  gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, buf, size);
-  fprintf (stderr, "%.*s", (int)size, buf);
-  gcry_free (buf);
-}
-
 static int
 decrypt_and_decode_pki_message(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, int offset _U_, int len _U_) // TODO Remove _U_
 {
@@ -2268,15 +2433,15 @@ decrypt_and_decode_pki_message(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_
   /* gchar* encrypted_aes_symmetric_key; */
   
   // 1. Convert hexadecimal key into binary
-  /* ts_public_enc_key = hex_to_string(g_options.ts_public_enc_key); */
-  /* ts_public_sign_key = hex_to_string(g_options.ts_public_sign_key); */
-  /* iut_private_key = hex_to_string(g_options.iut_private_enc_key); */
-  /* iut_public_enc_key = hex_to_string(g_options.iut_public_enc_key); */
-  /* iut_public_sign_key = hex_to_string(g_options.iut_public_sign_key); */
+  /* ts_public_enc_key = hex_to_bin(g_options.ts_public_enc_key); */
+  /* ts_public_sign_key = hex_to_bin(g_options.ts_public_sign_key); */
+  /* iut_private_key = hex_to_bin(g_options.iut_private_enc_key); */
+  /* iut_public_enc_key = hex_to_bin(g_options.iut_public_enc_key); */
+  /* iut_public_sign_key = hex_to_bin(g_options.iut_public_sign_key); */
   
   // 2. Convert encryption keys into S-expression
-  // 2.1 Calculate private key
-  ts_private_key = data_from_hex(g_options.ts_private_enc_key, &size);
+  // 2.1 Convert private key into sexp
+  ts_private_key = hex_to_bin(g_options.ts_private_enc_key, &size);
   printf("decrypt_and_decode_pki_message: size: %zu\n", size);
   show_hex("ts_private_key:", ts_private_key, size);
   if (g_decrypt_record.encryption_algo == 0) {
@@ -2289,7 +2454,7 @@ decrypt_and_decode_pki_message(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_
     goto decrypt_and_decode_pki_message_label;
   }
   // TODO Test the private key is on the curve 
-  // 2.2 Calculate public keys
+  // 2.2 Convert public keys into sexp
   if ((err = gcry_mpi_ec_new(&ctx, gcry_ts_private_key, NULL)) != 0) {
     fprintf(stderr, "decrypt_and_decode_pki_message: Failed %s/%s\n", gcry_strsource(err), gcry_strerror(err));
     goto decrypt_and_decode_pki_message_label;
@@ -2325,12 +2490,19 @@ decrypt_and_decode_pki_message(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_
     const guint8 tag_length = 16;
     const guint8 k_length = 32;*/
 
-    // Convert encryption_compressed_key into sexp
+    /* Convert encryption_compressed_key into sexp */
+    char* curve = "NIST P-256";
+    char* algo = "ecdh";
+    gcry_sexp_t ephemeral_key;
+    compressed_hex_key_to_sexp(g_decrypt_record.encryption_compressed_key, 32, g_decrypt_record.encryption_compressed_key_mode, curve, algo, &ephemeral_key);
+    show_sexp("gcry_ephemeral_key=", gcry_ephemeral_key);
+    /* Derive ephemeral key */
     
     
     
     
-    
+    /* Release resources */
+    gcry_sexp_release(gcry_ephemeral_key);
   }
 
 
