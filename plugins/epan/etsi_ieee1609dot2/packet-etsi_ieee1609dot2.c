@@ -281,7 +281,7 @@ show_mpi(const char *text, const char *text2, gcry_mpi_t a)
   char *buf;
   void *bufaddr = &buf;
 
-  err = gcry_mpi_aprint(GCRYMPI_FMT_HEX, bufaddr, NULL, a);
+  err = gcry_mpi_aprint(GCRYMPI_FMT_HEX, (unsigned char**)bufaddr, NULL, a);
   if (err)
     fprintf(stderr, "%s%s: [error printing number: %s]\n",
              text, text2? text2:"", gcry_strerror (err));
@@ -340,7 +340,7 @@ compressed_hex_key_to_sexp(const char* p_comp_key, const size_t p_comp_key_size,
   gcry_ctx_release (ctx);
   // Initialise x public key
   buffer_size = p_comp_key_size;
-  x_buffer = gcry_malloc(buffer_size);
+  x_buffer = (unsigned char*)gcry_malloc(buffer_size);
   if (x_buffer == NULL) {
     printf("Failed to allocate memory\n");
     return -7;
@@ -395,10 +395,10 @@ compressed_hex_key_to_sexp(const char* p_comp_key, const size_t p_comp_key_size,
   gcry_mpi_release (y_2);
 
   //show_hex(x_buffer, buffer_size, "x_buffer="),
-  y_buffer = gcry_malloc(buffer_size);
+  y_buffer = (unsigned char*)gcry_malloc(buffer_size);
   gcry_mpi_print (GCRYMPI_FMT_USG, y_buffer, buffer_size, NULL, y);
   //show_hex(y_buffer, buffer_size, "y_buffer="),
-  xy_buffer = gcry_malloc(2 * buffer_size);
+  xy_buffer = (unsigned char*)gcry_malloc(2 * buffer_size);
   memcpy((void*)xy_buffer, (const void*)x_buffer, buffer_size);
   memcpy((void*)(char*)(xy_buffer + buffer_size), (const void*)y_buffer, buffer_size);
   //show_hex(xy_buffer, 2 * buffer_size, "xy_buffer=");
