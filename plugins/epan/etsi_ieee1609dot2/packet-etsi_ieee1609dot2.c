@@ -2493,8 +2493,8 @@ decrypt_and_decode_pki_message(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_
     /* Convert encryption_compressed_key into sexp */
     char* curve = "NIST P-256";
     char* algo = "ecdh";
-    gcry_sexp_t ephemeral_key;
-    compressed_hex_key_to_sexp(g_decrypt_record.encryption_compressed_key, 32, g_decrypt_record.encryption_compressed_key_mode, curve, algo, &ephemeral_key);
+    gcry_sexp_t gcry_ephemeral_key;
+    compressed_hex_key_to_sexp(g_decrypt_record.encryption_compressed_key, 32, g_decrypt_record.encryption_compressed_key_mode, curve, algo, &gcry_ephemeral_key);
     show_sexp("gcry_ephemeral_key=", gcry_ephemeral_key);
     /* Derive ephemeral key */
     

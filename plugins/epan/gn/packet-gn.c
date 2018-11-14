@@ -35,7 +35,8 @@
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
-#include <epan/uat.h>
+
+#include <wsutil/wsgcrypt.h>
 
 void proto_register_gn(void);
 void proto_reg_handoff_gn(void);
@@ -371,42 +372,18 @@ static int hf_gn_st_symmalg = -1;
 static int hf_gn_st_ecc_pt = -1;
 static int hf_gn_st_opaque = -1;
 
-/*-------------------------------------
- * UAT for ESP
- *-------------------------------------
- */
-/* UAT entry structure. */
-typedef struct {
-  guint8 protocol;
-  gchar *srcIP;
-  gchar *dstIP;
-  gchar *spi;
+/* Signature verification entry structure. */
+typedef struct { 
+  guint8 sign_algo;
+  guint8 sign_compressed_key_mode;
+  gchar* sign_public_compressed_key;
+  gchar* sign_x;
+  gchar* sign_y;
+} sign_record_t;
+static sign_record_t g_sign_record = { 0xff, 0xff, NULL, NULL, NULL };
 
-  guint8 encryption_algo;
-  gchar *encryption_key_string;
-  gchar *encryption_key;
-  gint encryption_key_length;
-  gboolean         cipher_hd_created;
 
-  guint8 authentication_algo;
-  gchar *authentication_key_string;
-  gchar *authentication_key;
-  gint authentication_key_length;
-} uat_esp_sa_record_t;
 
-//static uat_esp_sa_record_t *uat_esp_sa_records = NULL;
-
-/* Extra SA records that may be set programmatically */
-/* 'records' array is now allocated on the heap */
-#define MAX_EXTRA_SA_RECORDS 16
-typedef struct extra_esp_sa_records_t {
-  guint num_records;
-  uat_esp_sa_record_t *records;
-} extra_esp_sa_records_t;
-//static extra_esp_sa_records_t extra_esp_sa_records;
-
-//static uat_t * esp_uat = NULL;
-//static guint num_sa_uat = 0;
 
 static const value_string basic_next_header_names[] = {
   { 0, "Any" },
@@ -2821,6 +2798,8 @@ dissect_ieee1609dot2_eccP256CurvePoint_r_sig(tvbuff_t *tvb, packet_info *pinfo, 
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_r_sig, tvb, offset, 32, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_r_sig);
     
+    g_sign_record.sign_x = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset, 32);
     offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf, ett_1609dot2_r_sig);
   }
 
@@ -2840,6 +2819,8 @@ dissect_ieee1609dot2_eccP384CurvePoint_r_sig(tvbuff_t *tvb, packet_info *pinfo, 
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_r_sig, tvb, offset, 48, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_r_sig);
     
+    g_sign_record.sign_x = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset, 48);
     offset = dissect_ieee1609dot2_eccP384CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf, ett_1609dot2_r_sig);
   }
 
@@ -2853,6 +2834,7 @@ dissect_ieee1609dot2_ecdsaNistP256Signature_packet(tvbuff_t *tvb, packet_info *p
   proto_item *sh_ti = NULL;
 
   printf(">>> dissect_ieee1609dot2_ecdsaNistP256Signature_packet: offset=0x%02x\n", offset);
+  g_sign_record.sign_algo = 0;
   if (tree) { /* we are being asked for details */
     gint sh_length;
     
@@ -2864,6 +2846,8 @@ dissect_ieee1609dot2_ecdsaNistP256Signature_packet(tvbuff_t *tvb, packet_info *p
     // EccP256CurvePoint
     offset = dissect_ieee1609dot2_eccP256CurvePoint_r_sig(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_nistp_256);
     // OCTET STRING (SIZE (32))
+    g_sign_record.sign_y = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_y, offset, 32);
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 32, FALSE);
     offset += 32;
 
@@ -2880,6 +2864,7 @@ dissect_ieee1609dot2_ecdsaBrainpoolP256Signature_packet(tvbuff_t *tvb, packet_in
   proto_item *sh_ti = NULL;
 
   printf(">>> dissect_ieee1609dot2_ecdsaBrainpoolP256Signature_packet: offset=0x%02x\n", offset);
+  g_sign_record.sign_algo = 1;
   if (tree) { /* we are being asked for details */
     gint sh_length;
     
@@ -2891,6 +2876,8 @@ dissect_ieee1609dot2_ecdsaBrainpoolP256Signature_packet(tvbuff_t *tvb, packet_in
     // EccP256CurvePoint
     offset = dissect_ieee1609dot2_eccP256CurvePoint_r_sig(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_brainpoolp_256);
     // OCTET STRING (SIZE (32))
+    g_sign_record.sign_y = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_y, offset, 32);
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 32, FALSE);
     offset += 32;
 
@@ -2907,6 +2894,7 @@ dissect_ieee1609dot2_ecdsaBrainpoolP384Signature_packet(tvbuff_t *tvb, packet_in
   proto_item *sh_ti = NULL;
 
   printf(">>> dissect_ieee1609dot2_ecdsaBrainpoolP384Signature_packet: offset=0x%02x\n", offset);
+  g_sign_record.sign_algo = 2;
   if (tree) { /* we are being asked for details */
     gint sh_length;
     
@@ -2918,6 +2906,8 @@ dissect_ieee1609dot2_ecdsaBrainpoolP384Signature_packet(tvbuff_t *tvb, packet_in
     // EccP384CurvePoint
     offset = dissect_ieee1609dot2_eccP384CurvePoint_r_sig(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_brainpoolp_384);
     // OCTET STRING (SIZE (48))
+    g_sign_record.sign_y = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_y, offset, 48);
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 48, FALSE);
     offset += 48;
 
