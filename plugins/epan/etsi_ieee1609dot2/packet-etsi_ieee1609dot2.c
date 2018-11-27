@@ -292,8 +292,31 @@ show_mpi(const char *text, const char *text2, gcry_mpi_t a)
     }
 }
 
+static unsigned char*
+sha256(const unsigned char* p_data, const size_t p_data_length) {
+  gcry_error_t result;
+  gcry_md_hd_t hd;
+  unsigned int digestlen;
+  unsigned char* digest;
+  unsigned char* ret_value = NULL;
+  
+  if ((result = gcry_md_open(&hd, GCRY_MD_SHA256, 0)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(result), gcry_strerror(result));
+    return NULL;
+  }
+  digestlen = gcry_md_get_algo_dlen(GCRY_MD_SHA256);
+  gcry_md_write(hd, p_data, p_data_length);
+  digest = gcry_md_read(hd, GCRY_MD_SHA256);
+  // Do not free digest
+  ret_value = (unsigned char*)gcry_malloc(digestlen);
+  memcpy((void*)ret_value, (const void*)digest, digestlen);
+  gcry_md_close(hd);
+
+  return ret_value;
+}
+
 static int
-compressed_hex_key_to_sexp(const char* p_comp_key, const size_t p_comp_key_size, const int p_comp_mode, const char* p_curve, const char* p_algo, gcry_sexp_t* p_key) {
+compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_key_size, const int p_comp_mode, const char* p_curve, const char* p_algo, gcry_sexp_t* p_key) {
   unsigned char* x_buffer = NULL;
   unsigned char* y_buffer = NULL;
   unsigned char* xy_buffer = NULL;
@@ -381,7 +404,7 @@ compressed_hex_key_to_sexp(const char* p_comp_key, const size_t p_comp_key_size,
     gcry_mpi_div(q, r, p_plus_1, four, 0);
     gcry_mpi_release(p_plus_1);
   } else {
-    /* Solution one: p - 5 / 4 */
+    /* Solution two: p - 5 / 4 */
     p_minus_5  = gcry_mpi_new (0);
     gcry_mpi_sub_ui(p_minus_5, p, 5);
     gcry_mpi_div(q, r, p_minus_5, four, 0);
@@ -398,18 +421,24 @@ compressed_hex_key_to_sexp(const char* p_comp_key, const size_t p_comp_key_size,
   y_buffer = (unsigned char*)gcry_malloc(buffer_size);
   gcry_mpi_print (GCRYMPI_FMT_USG, y_buffer, buffer_size, NULL, y);
   //show_hex(y_buffer, buffer_size, "y_buffer="),
-  xy_buffer = (unsigned char*)gcry_malloc(2 * buffer_size);
-  memcpy((void*)xy_buffer, (const void*)x_buffer, buffer_size);
-  memcpy((void*)(char*)(xy_buffer + buffer_size), (const void*)y_buffer, buffer_size);
+  xy_buffer = (unsigned char*)gcry_malloc(2 * buffer_size + 1);
+  *xy_buffer = 0x04;
+  memcpy((void*)(xy_buffer + 1), (const void*)x_buffer, buffer_size);
+  memcpy((void*)(char*)(xy_buffer + buffer_size + 1), (const void*)y_buffer, buffer_size);
   //show_hex(xy_buffer, 2 * buffer_size, "xy_buffer=");
 
-  if (strcmp(p_algo, "ecdsa") == 0) {
-    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecdsa(curve %s)(q %b)))", p_curve, 2 * buffer_size, xy_buffer)) != 0) {
+  if (strcmp(p_algo, "ecc") == 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecc(curve %s)(q %b)))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -10;
+    }
+  } else if (strcmp(p_algo, "ecdsa") == 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecdsa(curve %s)(q %b)))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
       printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
       return -10;
     }
   } else {
-    if ((rc = gcry_sexp_build (p_key, NULL, "(key-data(public-key(ecdh(curve %s)(q %b))))", p_curve, 2 * buffer_size, xy_buffer)) != 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(key-data(public-key(ecdh(curve %s)(q %b))))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
       printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
       return -11;
     }

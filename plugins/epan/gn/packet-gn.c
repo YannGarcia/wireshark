@@ -30,11 +30,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <ctype.h>
 
 #include <epan/proto.h>
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
+#include <epan/decode_as.h>
+#include "epan/proto_data.h"
 
 #include <wsutil/wsgcrypt.h>
 
@@ -95,6 +98,8 @@ static guint gETHERTYPE_PREF = ETHER_TYPE;
 
 /* Initialise the protocol and registered fields */
 static int proto_gn = -1;
+
+static int proto_ah = -1;
 
 /* Initialise the subtree pointers */
 static gint ett_gn = -1;
@@ -374,16 +379,22 @@ static int hf_gn_st_opaque = -1;
 
 /* Signature verification entry structure. */
 typedef struct { 
-  guint8 sign_algo;
-  guint8 sign_compressed_key_mode;
+  guint8 sign_algo; /* 0: Nist P-256, 1: Brainpool P-256 r1, 2:Brainpool P-384 r1 */
+  guint8 sign_compressed_key_mode; /* 0: compressed_y_0, 1: compressed_y_1 */
+  size_t to_be_signed_length;
+  size_t issuer_length;
   gchar* sign_public_compressed_key;
+  gchar* to_be_signed;
+  gchar* issuer; /* The SHA of the whole certificate */
   gchar* sign_x;
   gchar* sign_y;
 } sign_record_t;
-static sign_record_t g_sign_record = { 0xff, 0xff, NULL, NULL, NULL };
+static sign_record_t g_sign_record = { 0xff, 0xff, 0, 0, NULL, NULL, NULL, NULL, NULL };
 
-
-
+typedef struct gn_common_options {
+  gboolean enable_verify_sign;
+} gn_common_options_t;
+static gn_common_options_t g_options = { FALSE };
 
 static const value_string basic_next_header_names[] = {
   { 0, "Any" },
@@ -616,6 +627,308 @@ static const value_string st_1609dot2_certificate_type[] = {
   { 0, NULL}
 };
 
+static void
+show_hex(const char *prefix, const void *buffer, size_t buflen)
+{
+  const unsigned char*s;
+
+  fprintf (stderr, "%s: ", prefix);
+  for (s= (unsigned char*)buffer; buflen; buflen--, s++)
+    fprintf (stderr, "%02x", *s);
+  putc ('\n', stderr);
+}
+
+static
+char* bin_to_hex(const unsigned char* input, const size_t buffer_length) {
+  char* buf = NULL;
+  size_t i = 0, j = 0;
+  
+  if (buffer_length == 0) {
+    return "";
+  }
+  buf = (char*)gcry_malloc(buffer_length << 1);
+  
+  do {
+    *(buf + j) = "0123456789ABCDEF"[(*(input + i) >> 4) & 0x0F];
+    *(buf + j + 1) = "0123456789ABCDEF"[*(input + i) & 0x0F];
+    i += 1; j += 2;
+  } while (i < buffer_length);
+
+  return buf;
+}
+
+static
+unsigned char* hex_to_bin(const char* input, size_t* buffer_length) {
+  char a;
+  size_t i, len;
+  unsigned char *retval = NULL;
+  if (!input) return NULL;
+  if((len = strlen(input)) & 1) return NULL;
+  retval = (unsigned char*)gcry_malloc(len >> 1);
+  for ( i = 0; i < len; i ++) {
+    a = toupper(input[i]);
+    if (!isxdigit(a)) break;
+    if (isdigit(a)) a -= '0';
+    else a = a - 'A' + 0x0A; 
+   
+    if (i & 1) retval[i >> 1] |= a;
+    else retval[i >> 1] = a<<4;
+  }
+  if (i < len) {
+    gcry_free(retval);
+    retval = NULL;
+  }
+  *buffer_length = len >> 1;
+
+  return retval;
+}
+
+static void
+show_sexp(const char *prefix, gcry_sexp_t a)
+{
+  char* buf;
+  size_t size;
+
+  if (prefix)
+    fputs (prefix, stderr);
+  size = gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, NULL, 0);
+  buf = (char*)gcry_xmalloc (size);
+
+  gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, buf, size);
+  fprintf (stderr, "%.*s", (int)size, buf);
+  gcry_free (buf);
+}
+
+static void
+show_mpi(const char *text, const char *text2, gcry_mpi_t a)
+{
+  gcry_error_t err;
+  char *buf;
+  void *bufaddr = &buf;
+
+  err = gcry_mpi_aprint(GCRYMPI_FMT_HEX, (unsigned char**)bufaddr, NULL, a);
+  if (err)
+    fprintf(stderr, "%s%s: [error printing number: %s]\n",
+             text, text2? text2:"", gcry_strerror (err));
+  else
+    {
+      fprintf(stderr, "%s%s: %s\n", text, text2? text2:"", buf);
+      gcry_free (buf);
+    }
+}
+
+static unsigned char*
+sha256(const unsigned char* p_data, const size_t p_data_length) {
+  gcry_error_t result;
+  gcry_md_hd_t hd;
+  unsigned int digestlen;
+  unsigned char* digest;
+  unsigned char* ret_value = NULL;
+  
+  if ((result = gcry_md_open(&hd, GCRY_MD_SHA256, 0)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(result), gcry_strerror(result));
+    return NULL;
+  }
+  digestlen = gcry_md_get_algo_dlen(GCRY_MD_SHA256);
+  gcry_md_write(hd, p_data, p_data_length);
+  digest = gcry_md_read(hd, GCRY_MD_SHA256);
+  // Do not free digest
+  ret_value = (unsigned char*)gcry_malloc(digestlen);
+  memcpy((void*)ret_value, (const void*)digest, digestlen);
+  gcry_md_close(hd);
+
+  return ret_value;
+}
+
+static int
+compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_key_size, const int p_comp_mode, const char* p_curve, const char* p_algo, gcry_sexp_t* p_key) {
+  unsigned char* x_buffer = NULL;
+  unsigned char* y_buffer = NULL;
+  unsigned char* xy_buffer = NULL;
+  size_t buffer_size;
+  gcry_sexp_t keyparm = NULL;
+  gcry_sexp_t key = NULL, private_key = NULL, e_key = NULL;
+  
+  gcry_ctx_t ctx = NULL;
+  gcry_mpi_t a, b, p, p_plus_1, p_minus_5, x, q, r;
+  gcry_mpi_t two, three, four, x_3, axb, y_2, y;
+    
+  gcry_error_t rc;
+
+  printf(">>> compressed_hex_key_to_sexp: %zu - %d - %s - %s\n", p_comp_key_size, p_comp_mode, p_curve, p_algo);
+  show_hex(">> compressed_hex_key_to_sexp: ", p_comp_key, p_comp_key_size);
+  
+  // Extract (p, a, b) parameters from curve
+  if ((rc = gcry_sexp_build (&keyparm, NULL, "(genkey(ecc(curve %s)(flags param)))", p_curve)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -1;
+  }
+  show_sexp("keyparm: ", keyparm);
+  if ((rc = gcry_pk_genkey(&key, keyparm)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -2;
+  }
+  private_key = gcry_sexp_find_token(key, "private-key", 0);
+  if ((rc = gcry_mpi_ec_new (&ctx, private_key, NULL)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -3;
+  }
+  if ((a = gcry_mpi_ec_get_mpi ("a", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -4;
+  }
+  if ((b = gcry_mpi_ec_get_mpi ("b", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -5;
+  }
+  if ((p = gcry_mpi_ec_get_mpi ("p", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -6;
+  }
+  gcry_ctx_release (ctx);
+  // Initialise x public key
+  buffer_size = p_comp_key_size;
+  x_buffer = (unsigned char*)gcry_malloc(buffer_size);
+  if (x_buffer == NULL) {
+    printf("Failed to allocate memory\n");
+    return -7;
+  }
+  memcpy((void*)x_buffer, (const void*)p_comp_key, buffer_size);
+  if ((rc = gcry_sexp_build(&e_key, NULL, "(e-key(x %b))", buffer_size, x_buffer)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -8;
+  }
+  if ((x = gcry_sexp_nth_mpi(gcry_sexp_find_token(e_key, "x", 0), 1, GCRYMPI_FMT_USG)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -9;
+  }
+  gcry_sexp_release(e_key);
+  
+  /* Ecc curve equation: y^2=x^3+a*x+b */
+  /* Compute y^2 */
+  two   = gcry_mpi_set_ui (NULL, 2);
+  three = gcry_mpi_set_ui (NULL, 3);
+  four = gcry_mpi_set_ui (NULL, 4);
+  x_3   = gcry_mpi_new (0);
+  axb   = gcry_mpi_new (0);
+  y_2   = gcry_mpi_new (0);
+  gcry_mpi_powm (x_3, x, three, p); // w = b^e \bmod m. 
+  gcry_mpi_mulm (axb, a, x, p);
+  gcry_mpi_addm (axb, axb, b, p);
+  gcry_mpi_addm (y_2, x_3, axb, p);
+  show_mpi("y_2", "", y_2);
+
+  /* Compute sqrt(y^2): two solutions */
+  q     = gcry_mpi_new (0);
+  r     = gcry_mpi_new (0);
+  y     = gcry_mpi_new (0);
+  if (p_comp_mode == 0) {
+    /* Solution one: y = p + 1 / 4 */
+    p_plus_1   = gcry_mpi_new (0);
+    gcry_mpi_add_ui(p_plus_1, p, 1);
+    gcry_mpi_div(q, r, p_plus_1, four, 0);
+    gcry_mpi_release(p_plus_1);
+  } else {
+    /* Solution two: p - 5 / 4 */
+    p_minus_5  = gcry_mpi_new (0);
+    gcry_mpi_sub_ui(p_minus_5, p, 5);
+    gcry_mpi_div(q, r, p_minus_5, four, 0);
+    gcry_mpi_release(p_minus_5);
+  }
+  gcry_mpi_powm(y, y_2, q, p);
+  show_mpi("y", "", y);
+  gcry_mpi_release (four);
+  gcry_mpi_release (q);
+  gcry_mpi_release (r);
+  gcry_mpi_release (y_2);
+
+  //show_hex(x_buffer, buffer_size, "x_buffer="),
+  y_buffer = (unsigned char*)gcry_malloc(buffer_size);
+  gcry_mpi_print (GCRYMPI_FMT_USG, y_buffer, buffer_size, NULL, y);
+  //show_hex(y_buffer, buffer_size, "y_buffer="),
+  xy_buffer = (unsigned char*)gcry_malloc(1 + 2 * buffer_size);
+  *xy_buffer = 0x04;
+  memcpy((void*)(xy_buffer + 1), (const void*)x_buffer, buffer_size);
+  memcpy((void*)(char*)(xy_buffer + buffer_size + 1), (const void*)y_buffer, buffer_size);
+  //show_hex(xy_buffer, 2 * buffer_size, "xy_buffer=");
+
+  if (strcmp(p_algo, "ecc") == 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecc(curve %s)(q %b)))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -10;
+    }
+  } else if (strcmp(p_algo, "ecdsa") == 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecdsa(curve %s)(q %b)))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -11;
+    }
+  } else {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(key-data(public-key(ecdh(curve %s)(q %b))))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -12;
+    }
+  }
+  show_sexp("compressed_hex_key_to_sexp: p_key=", *p_key);
+  
+  /* Release resources */
+  gcry_free(x_buffer);
+  gcry_free(y_buffer);
+  gcry_free(xy_buffer);
+  gcry_mpi_release(x);
+  gcry_mpi_release(y);
+
+  gcry_mpi_release(two);
+  gcry_mpi_release(three);
+  gcry_mpi_release(a);
+  gcry_mpi_release(b);
+  gcry_mpi_release(p);
+  gcry_mpi_release(x_3);
+  gcry_mpi_release(axb);
+  
+  gcry_sexp_release(private_key);
+  gcry_sexp_release(key);
+  gcry_sexp_release(keyparm);
+ 
+  return 0;
+} // End of function compressed_hex_key_to_sexp
+
+static void etsi_gn_cleanup(void)
+{
+  printf(">>> gn_cleanup\n");
+  
+  if (g_sign_record.sign_algo != 0xff) {
+    g_sign_record.sign_algo = 0xff;
+    /* FIXME wmem_free generate a trap :(
+    if (g_sign_record.sign_compressed_key != NULL) {
+      wmem_free(wmem_packet_scope(), g_sign_record.sign_compressed_key);
+      g_sign_record.sign_compressed_key = NULL;
+    }
+    if (g_sign_record.nonce != NULL) {
+      wmem_free(wmem_packet_scope(), g_sign_record.nonce);
+      g_sign_record.nonce = NULL;
+    }
+    if (g_sign_record.tag != NULL) {
+      wmem_free(wmem_packet_scope(), g_sign_record.tag);
+      g_sign_record.tag = NULL;
+    }
+    if (g_sign_record.encrypted_aes_symmetric_key != NULL) {
+      wmem_free(wmem_packet_scope(), g_sign_record.encrypted_aes_symmetric_key);
+      g_sign_record.encrypted_aes_symmetric_key = NULL;
+      }*/
+  }
+}
+
+static void
+etsi_gn_cleanup_protocol(void)
+{
+  printf(">>> etsi_gn_cleanup_protocol\n");  
+}
+
+
+
+
+
+
 static gint32
 dissect_var_val (tvbuff_t *tvb, 
                  proto_tree *tree,
@@ -649,6 +962,21 @@ dissect_var_val (tvbuff_t *tvb,
 
   *varval = len;
   return offsetdiff;
+}
+
+static void ah_prompt(packet_info *pinfo, gchar *result)
+{
+  printf(">>> ah_prompt\n");
+  
+  g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "ETSI ITS GeoNetworking Protocol %u as",
+	     GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, proto_ah, pinfo->curr_layer_num)));
+}
+
+static gpointer ah_value(packet_info *pinfo)
+{
+  printf(">>> ah_value\n");
+  
+  return p_get_proto_data(pinfo->pool, pinfo, proto_ah, pinfo->curr_layer_num);
 }
 
 /* Interpret Time64 type */
@@ -1977,9 +2305,15 @@ dissect_ieee1609dot2_eccP256CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
       proto_tree_add_item(sh_tree, hf_1609dot2_x_only, tvb, offset, 32, FALSE);
       offset += 32;
     } else if ((tag & 0x7f) == 0x02) { // Decode compressed-y-0
+      g_sign_record.sign_compressed_key_mode = 0;
+      g_sign_record.sign_public_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+      tvb_memcpy(tvb, (char*)g_sign_record.sign_public_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_0, tvb, offset, 32, FALSE);
       offset += 32;
     } else if ((tag & 0x7f) == 0x03) { // Decode compressed-y-1
+      g_sign_record.sign_compressed_key_mode = 1;
+      g_sign_record.sign_public_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+      tvb_memcpy(tvb, (char*)g_sign_record.sign_public_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_1, tvb, offset, 32, FALSE);
       offset += 32;
     } // TODO
@@ -2014,9 +2348,15 @@ dissect_ieee1609dot2_eccP384CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
       proto_tree_add_item(sh_tree, hf_1609dot2_x_only, tvb, offset, 48, FALSE);
       offset += 48;
     } else if ((tag & 0x7f) == 0x02) { // Decode compressed-y-0
+      g_sign_record.sign_compressed_key_mode = 0;
+      g_sign_record.sign_public_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
+      tvb_memcpy(tvb, (char*)g_sign_record.sign_public_compressed_key, offset, 48);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_0, tvb, offset, 48, FALSE);
       offset += 48;
     } else if ((tag & 0x7f) == 0x03) { // Decode compressed-y-1
+      g_sign_record.sign_compressed_key_mode = 1;
+      g_sign_record.sign_public_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
+      tvb_memcpy(tvb, (char*)g_sign_record.sign_public_compressed_key, offset, 48);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_1, tvb, offset, 48, FALSE);
       offset += 48;
     } // TODO
@@ -2750,6 +3090,9 @@ dissect_ieee1609dot2_certificate_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     offset += 1;
     
     if ((tag & 0x7f) == 0x00) {
+      gint issuer_offset = offset - 1;
+      
+      printf("dissect_ieee1609dot2_certificate_packet: issuer_offset: '%x'\n", issuer_offset);
       /* Protocol version*/
       tag = tvb_get_guint8(tvb, offset);
       printf("dissect_ieee1609dot2_certificate_packet: version: '%x'\n", tag);
@@ -2775,6 +3118,11 @@ dissect_ieee1609dot2_certificate_packet(tvbuff_t *tvb, packet_info *pinfo, proto
 	printf("dissect_ieee1609dot2_certificate_packet: Process signature\n");
 	offset = dissect_ieee1609dot2_signature_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_certificate_signature);
       }
+      printf("dissect_ieee1609dot2_certificate_packet: offset: '%x'\n", offset);
+      g_sign_record.issuer_length = offset - issuer_offset;
+      printf("dissect_ieee1609dot2_certificate_packet: Certificate length: %zu\n", g_sign_record.issuer_length);
+      g_sign_record.issuer = (gchar*)wmem_alloc(wmem_packet_scope(), g_sign_record.issuer_length);
+      tvb_memcpy(tvb, (char*)g_sign_record.issuer, issuer_offset, g_sign_record.issuer_length);
     } else {
       // TODO
     }
@@ -2799,7 +3147,7 @@ dissect_ieee1609dot2_eccP256CurvePoint_r_sig(tvbuff_t *tvb, packet_info *pinfo, 
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_r_sig);
     
     g_sign_record.sign_x = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
-    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset, 32);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset + 1, 32);
     offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf, ett_1609dot2_r_sig);
   }
 
@@ -2820,7 +3168,7 @@ dissect_ieee1609dot2_eccP384CurvePoint_r_sig(tvbuff_t *tvb, packet_info *pinfo, 
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_r_sig);
     
     g_sign_record.sign_x = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
-    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset, 48);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset + 1, 48);
     offset = dissect_ieee1609dot2_eccP384CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf, ett_1609dot2_r_sig);
   }
 
@@ -3021,7 +3369,7 @@ dissect_ieee1609dot2_header_info_packet(tvbuff_t *tvb, packet_info *pinfo, proto
   }
 
   return offset;
-} // End of function dissect_ieee1609dot2_header_info_packet
+} // End of function dissect_ieee1609dot2_header_info_packet<
 
 static int
 dissect_ieee1609dot2_signed_data_payload_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
@@ -3069,7 +3417,13 @@ dissect_ieee1609dot2_to_be_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo,
 
     offset = dissect_ieee1609dot2_signed_data_payload_packet(tvb, pinfo, sh_tree, offset);
     offset = dissect_ieee1609dot2_header_info_packet(tvb, pinfo, sh_tree, offset);
-
+    
+    // Copy the toBeSigned block
+    g_sign_record.to_be_signed_length = offset - sh_length;
+    printf("dissect_ieee1609dot2_to_be_signed_data_packet: g_sign_record.to_be_signed_length=%zu\n", g_sign_record.to_be_signed_length);
+    g_sign_record.to_be_signed = (gchar*)wmem_alloc(wmem_packet_scope(), g_sign_record.to_be_signed_length);
+    tvb_memcpy(tvb, (char*)g_sign_record.to_be_signed, sh_length, g_sign_record.to_be_signed_length);
+    
     proto_item_set_len(sh_ti, offset - sh_length);
   }
 
@@ -3869,6 +4223,132 @@ dissect_secured_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int 
   return offset;
 } // End of function dissect_secured_packet
 
+static void
+ieee1609dot2_verify_signature(tvbuff_t *tvb _U_, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
+{
+  printf(">>> ieee1609dot2_verify_signature\n");
+  printf("ieee1609dot2_verify_signature: algo: %02x\n", g_sign_record.sign_algo);
+  printf("ieee1609dot2_verify_signature: comp.mode: %02x\n", g_sign_record.sign_compressed_key_mode);
+
+  if (g_sign_record.sign_public_compressed_key != NULL) {
+    char* curve = NULL;
+    int key_length = 0;
+    gcry_sexp_t gcry_sexp_key = NULL;
+    gcry_sexp_t gcry_sexp_sign_key = NULL;
+    gcry_sexp_t gcry_sexp_sign_message = NULL;
+    gcry_error_t rc;
+    size_t hash_len = 0;
+    unsigned char* hash_data = NULL;
+    unsigned char* hash_signer = NULL;
+    unsigned char* hash_signature = NULL;
+    
+    show_hex("ieee1609dot2_verify_signature: sign_public_compressed_key: ", g_sign_record.sign_public_compressed_key, 32);
+    show_hex("ieee1609dot2_verify_signature: toBeSigned: ", g_sign_record.to_be_signed, g_sign_record.to_be_signed_length);
+    show_hex("Certificate: ", g_sign_record.issuer, g_sign_record.issuer_length);
+    show_hex("ieee1609dot2_verify_signature: sign_x: ", g_sign_record.sign_x, 32);
+    show_hex("ieee1609dot2_verify_signature: sign_y: ", g_sign_record.sign_y, 32);
+    
+    switch (g_sign_record.sign_algo) {
+    case 0x00: /* Nist P-256 */
+      key_length = 32;
+      curve = "NIST P-256";
+      break;
+    case 0x01: /* Brainpool P-256 r1 */
+      key_length = 32;
+      curve = "brainpoolP256r1";
+      break;
+    case 0x02: /* Brainpool P-384 r1 */
+      key_length = 48;
+      curve = "brainpoolP384r1";
+      break;
+    default:
+      goto ieee1609dot2_verify_signature_end;
+    } /* End of 'switch' statement */
+    if (compressed_hex_key_to_sexp(g_sign_record.sign_public_compressed_key, key_length, g_sign_record.sign_compressed_key_mode, curve, "ecc", &gcry_sexp_key) != 0) {
+      col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Cannot not verify signature");
+      goto ieee1609dot2_verify_signature_end;
+    }
+    show_sexp("ieee1609dot2_verify_signature: gcry_sexp_key: ", gcry_sexp_key);
+    // Request for signature
+    if ((rc = gcry_sexp_build(&gcry_sexp_sign_key, NULL, "(sig-val(ecdsa(r %b)(s %b)))", key_length, g_sign_record.sign_x, key_length, g_sign_record.sign_y)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      gcry_sexp_release(gcry_sexp_key);
+      col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Cannot not verify signature");
+      goto ieee1609dot2_verify_signature_end;
+    }
+    show_sexp("ieee1609dot2_verify_signature: gcry_sexp_sign_key: ", gcry_sexp_sign_key);
+    hash_len = 32;
+    hash_data = sha256(g_sign_record.to_be_signed, g_sign_record.to_be_signed_length);
+    hash_signer = sha256(g_sign_record.issuer, g_sign_record.issuer_length);
+    hash_signature = (unsigned char*)gcry_malloc(2 * hash_len);
+    memcpy((void*)hash_signature, (const void*)hash_data, hash_len);
+    memcpy((void*)(hash_signature + hash_len), (const void*)hash_signer, hash_len);
+    if ((rc = gcry_sexp_build(&gcry_sexp_sign_message, NULL, "(data(flags raw)(value %b))", hash_len, sha256(hash_signature, 2 * hash_len))) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      gcry_free(hash_data);
+      gcry_free(hash_signer);
+      gcry_free(hash_signature);
+      gcry_sexp_release(gcry_sexp_sign_key);
+      gcry_sexp_release(gcry_sexp_key);
+      col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Cannot not verify signature");
+      goto ieee1609dot2_verify_signature_end;
+    }
+    gcry_free(hash_data);
+    gcry_free(hash_signer);
+    gcry_free(hash_signature);
+    show_sexp("ieee1609dot2_verify_signature: gcry_sexp_sign_message: ", gcry_sexp_sign_message);
+    if ((rc = gcry_pk_verify(gcry_sexp_sign_key, gcry_sexp_sign_message, gcry_sexp_key)) != 0) {
+      //expert_field ef = { PI_SECURITY, PI_WARN };
+      
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      gcry_sexp_release(gcry_sexp_key);
+      gcry_sexp_release(gcry_sexp_sign_key);
+      gcry_sexp_release(gcry_sexp_sign_message);
+      col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Signature cannot be verified");
+      //expert_add_info_format(pinfo, NULL, &ef, "Signature cannot be verified");
+
+      goto ieee1609dot2_verify_signature_end;
+    }
+    
+    gcry_sexp_release(gcry_sexp_key);
+    gcry_sexp_release(gcry_sexp_sign_key);
+    gcry_sexp_release(gcry_sexp_sign_message);
+    
+    col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Signature verified");
+
+    goto ieee1609dot2_verify_signature_end;
+  } else {
+    //col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Signature not verified");
+  }
+  
+ ieee1609dot2_verify_signature_end:    
+  g_sign_record.sign_algo = 0xff;
+  g_sign_record.sign_compressed_key_mode = 0xff;
+  g_sign_record.to_be_signed_length = 0;
+  if (g_sign_record.sign_public_compressed_key != NULL) {
+    wmem_free(wmem_packet_scope(), g_sign_record.sign_public_compressed_key);
+    g_sign_record.sign_public_compressed_key = NULL;
+  }
+  if (g_sign_record.issuer != NULL) {
+    wmem_free(wmem_packet_scope(), g_sign_record.issuer);
+    g_sign_record.issuer = NULL;
+  }
+  g_sign_record.issuer_length = 0;
+  if (g_sign_record.to_be_signed != NULL) {
+    wmem_free(wmem_packet_scope(), g_sign_record.to_be_signed);
+    g_sign_record.to_be_signed = NULL;
+  }
+  g_sign_record.to_be_signed_length = 0;
+  if (g_sign_record.sign_x != NULL) {
+    wmem_free(wmem_packet_scope(), g_sign_record.sign_x);
+    g_sign_record.sign_x = NULL;
+  }
+  if (g_sign_record.sign_y != NULL) {
+    wmem_free(wmem_packet_scope(), g_sign_record.sign_y);
+    g_sign_record.sign_y = NULL;
+  }
+}
+
 /* Code to actually dissect the packets */
 static gboolean 
 dissect_gn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
@@ -3914,7 +4394,16 @@ dissect_gn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
   case 2: // ETSI TS 103 077 < 2017
     col_add_str(pinfo->cinfo, COL_INFO, str_packet_type);
     if (tvb_get_guint8(tvb, offset) == 0x03) {
-      return dissect_ieee1609dot2_data_packet(tvb, pinfo, gn_tree, offset);
+      guint result = dissect_ieee1609dot2_data_packet(tvb, pinfo, tree, offset);
+      if (g_options.enable_verify_sign) {
+	if (g_sign_record.sign_algo != 0xff) {
+	  ieee1609dot2_verify_signature(tvb, pinfo, tree, data);
+	  g_sign_record.sign_algo = 0xff;	  
+	} else {
+	  col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Signature not verified");
+	}
+      }
+      return result;
       /*dissector_handle_t ieee1609dot2_handle;
         
         col_add_str(pinfo->cinfo, COL_INFO, str_packet_type);
@@ -3943,6 +4432,12 @@ void
 proto_register_gn(void)
 {
   module_t *gn_module;
+  static build_valid_func ah_da_build_value[1] = {ah_value};
+  static decode_as_value_t ah_da_values = {ah_prompt, 1, ah_da_build_value};
+  static decode_as_t ah_da = {"ah", "ETSI ITS GeoNetworking", "ethertype", 1, 0, &ah_da_values, NULL, NULL,
+			      decode_as_default_populate_list, decode_as_default_reset, decode_as_default_change, NULL};
+
+
 
   /* Setup list of header fields */
   static hf_register_info hf[] = {
@@ -4621,9 +5116,18 @@ proto_register_gn(void)
   
 
   /* Register a sample port preference   */
+  prefs_register_bool_preference(gn_module,
+				 "enable_verify_sign",
+				 "Attempt to verify signatures",
+                                 "TODO1.",
+                                 &(g_options.enable_verify_sign)
+				 );
   prefs_register_uint_preference(gn_module, "ethertype", "GeoNetworking Ethertype (in hex)",
 				 "GeoNetworking Ethertype (in hex)",
 				 16, &gETHERTYPE_PREF);
+  
+  register_cleanup_routine(&etsi_gn_cleanup_protocol);
+  register_decode_as(&ah_da);
 }
 
 void
@@ -4638,6 +5142,8 @@ proto_reg_handoff_gn(void)
   /* register IPv6 sub-dissector */
   ipv6_handle = find_dissector("ipv6");
   dissector_add_uint("gn.nh", 3, ipv6_handle);
+
+  register_cleanup_routine(etsi_gn_cleanup);
 
   /* register IEEE 1609.2 sub-dissector */
   /*ieee1609dot2_handle = find_dissector("ieee1609dot2");
