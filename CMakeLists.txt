@@ -7,6 +7,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
 
+if(WIN32)
+	# Needed for GREATER_EQUAL operator
+	cmake_minimum_required(VERSION 3.7)
+else()
+	cmake_minimum_required(VERSION 3.5)
+endif()
 project(Wireshark C CXX)
 
 # Updated by make-version.pl
@@ -34,12 +40,6 @@ endif()
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 
 message(STATUS "Generating build using CMake ${CMAKE_VERSION}")
-if(WIN32)
-	# Needed for GREATER_EQUAL operator
-	cmake_minimum_required(VERSION 3.7)
-else()
-	cmake_minimum_required(VERSION 3.5)
-endif()
 
 #Where to find local cmake scripts
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
@@ -188,6 +188,12 @@ if(NOT CMAKE_INSTALL_RPATH AND NOT (WIN32 OR APPLE))
 	endif()
 endif()
 
+if(WIN32)
+    # Linking with wsetargv.obj enables "wildcard expansion" of
+    # command-line arguments.
+    set(WILDCARD_OBJ wsetargv.obj)
+endif(WIN32)
+
 # Banner shown at top right of Qt welcome screen.
 if(DEFINED ENV{WIRESHARK_VERSION_FLAVOR})
 	set(VERSION_FLAVOR "$ENV{WIRESHARK_VERSION_FLAVOR}")
@@ -207,6 +213,7 @@ message(STATUS "V: ${PROJECT_VERSION}, MaV: ${PROJECT_MAJOR_VERSION}, MiV: ${PRO
 include(UseLemon)
 include(UseMakePluginReg)
 include(UseMakeTaps)
+include(UseExecutableResources)
 include(UseAsn2Wrs)
 
 # The following snippet has been taken from
@@ -273,6 +280,36 @@ if(APPLE AND EXISTS /usr/local/opt/qt5)
 	# QT_FIND_PACKAGE_OPTIONS should be passed to find_package,
 	# e.g. find_package(Qt5Core ${QT_FIND_PACKAGE_OPTIONS})
 	set (QT_FIND_PACKAGE_OPTIONS PATHS /usr/local/opt/qt5)
+endif()
+
+set(OSS_FUZZ OFF CACHE BOOL "Whether building for oss-fuzz")
+mark_as_advanced(OSS_FUZZ)
+if(OSS_FUZZ)
+	if(ENABLE_FUZZER)
+		# In oss-fuzz mode, the fuzzing engine can be afl or libFuzzer.
+		message(FATAL_ERROR "Cannot force libFuzzer when using oss-fuzz")
+	endif()
+	# Must not depend on external dependencies so statically link all libs.
+	set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+endif()
+
+#
+# Linking can consume a lot of memory, especially when built with ASAN and
+# static libraries (like oss-fuzz) or Debug mode. With Ninja, the number of
+# parallel linker processes is constrained by job parallelism (-j), but this can
+# be reduced further by setting "job pools" to a lower number.
+#
+if(CMAKE_MAKE_PROGRAM MATCHES "ninja" AND OSS_FUZZ)
+	# Assume oss-fuzz linker jobs do not require more than 1.2G per task
+	set(per_job_memory_mb 1200)
+	cmake_host_system_information(RESULT total_memory_mb QUERY TOTAL_PHYSICAL_MEMORY)
+	math(EXPR parallel_link_jobs "${total_memory_mb} / ${per_job_memory_mb}")
+	if(parallel_link_jobs LESS 1)
+		set(parallel_link_jobs 1)
+	endif()
+	set_property(GLOBAL APPEND PROPERTY JOB_POOLS link_job_pool=${parallel_link_jobs})
+	set(CMAKE_JOB_POOL_LINK link_job_pool)
+	message(STATUS "Ninja job pool size: ${parallel_link_jobs}")
 endif()
 
 # Always enable position-independent code when compiling, even for
@@ -484,7 +521,7 @@ else() # ! MSVC
 		)
 	endif()
 
-	set(COMMON_WARN_FLAGS
+	list(APPEND WIRESHARK_COMMON_FLAGS
 		# The following are for C and C++
 		# -O<X> and -g get set by the CMAKE_BUILD_TYPE
 		-Wall
@@ -506,6 +543,8 @@ else() # ! MSVC
 		-Wheader-guard
 		-Wno-unused-const-variable
 		-Wno-unused-function
+		-Wcomma
+		-Wshorten-64-to-32
 	)
 
 	#
@@ -518,12 +557,12 @@ else() # ! MSVC
 		# the stack usage - we only care about stack
 		# usage in normal operation.
 		#
-		set(COMMON_WARN_FLAGS ${COMMON_WARN_FLAGS}
+		set(WIRESHARK_COMMON_FLAGS ${WIRESHARK_COMMON_FLAGS}
 			-Wframe-larger-than=32768
 		)
 	endif()
 
-	set(C_WARN_FLAGS
+	list(APPEND WIRESHARK_C_ONLY_FLAGS
 		# The following are C only, not C++
 		-Wc++-compat
 		-Wunused-const-variable
@@ -547,128 +586,109 @@ else() # ! MSVC
 		-Wlogical-op
 		-Wjump-misses-init
 		#
-		# The Qt headers generate a ton of shortening warnings
-		# on 64-bit systems, so we only enable this for C for
-		# now.
-		#
-		-Wshorten-64-to-32
-		#
 		# Implicit function declarations are an error in C++ and most
 		# likely a programming error in C. Turn -Wimplicit-int and
 		# -Wimplicit-function-declaration into an error by default.
 		#
 		-Werror=implicit
-		#
-		# The Qt headers in version 5.10 introduced a lot of
-		# "Possible misuse of comma operator here" warnings.
-		#
-		-Wcomma
 	)
 
-	set(CXX_WARN_FLAGS
-	)
+	#
+	# The universal zero initializer (in C: struct s x = { 0 };) for
+	# structures with multiple members is perfectly legal, but some older
+	# compilers warn about it. Silence those older compilers.
+	#
+	if((CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS "4.7") OR
+	   (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_C_COMPILER_VERSION VERSION_LESS "6.0") OR
+	   (CMAKE_C_COMPILER_ID STREQUAL "AppleClang" AND CMAKE_C_COMPILER_VERSION VERSION_LESS "10.0"))
+		list(APPEND WIRESHARK_C_ONLY_FLAGS -Wno-missing-field-initializers)
+	endif()
 
-	find_package(Qt5Core ${QT_FIND_PACKAGE_OPTIONS}) # Needed to check for Qt version
-	if (Qt5Core_VERSION VERSION_GREATER 5.8)
-		# The Qt headers in version 5.8 and older generate a ton of shortening
-		# errors on 64-bit systems so only enable this for version 5.9 and greater.
-		set(CXX_WARN_FLAGS ${CXX_WARN_FLAGS}
-			-Wshorten-64-to-32
-		)
-	endif()
-	if (Qt5Core_VERSION VERSION_LESS 5.10)
-		# The Qt headers in version 5.10 introduced a lot of
-		# "Possible misuse of comma operator here" warnings.
-		set(CXX_WARN_FLAGS ${CXX_WARN_FLAGS}
-			-Wcomma
-		)
-	endif()
+
+	list(APPEND WIRESHARK_CXX_ONLY_FLAGS
+	)
 
 	#
 	# These are not enabled by default, because the warnings they
 	# produce are very hard or impossible to eliminate.
 	#
-	set(COMMON_EXTRA_WARN_FLAGS
-		# The following are for C and C++
-		-Wpedantic
-		#
-		# As we use variadic macros, we don't want warnings
-		# about them, even with -Wpedantic.
-		#
-		-Wno-variadic-macros
-		#
-		# Various code blocks this one.
-		#
-		-Woverflow
-		-fstrict-overflow -Wstrict-overflow=4
-		#
-		# Due to various places where APIs we don't control
-		# require us to cast away constness, we can probably
-		# never enable this one with -Werror.
-		#
-		-Wcast-qual
-		#
-		# Some generated ASN.1 dissectors block this one;
-		# multiple function declarations for the same
-		# function are being generated.
-		#
-		-Wredundant-decls
-		#
-		# Some loops are safe, but it's hard to convince the
-		# compiler of that.
-		#
-		-Wunsafe-loop-optimizations
-		#
-		# All the registration functions block these for now.
-		#
-		-Wmissing-prototypes
-		-Wmissing-declarations
-		#
-		# A bunch of "that might not work on SPARC" code blocks
-		# this one for now; some of it is code that *will* work
-		# on SPARC, such as casts of "struct sockaddr *" to
-		# "struct sockaddr_in *", which are required by some
-		# APIs such as getifaddrs().
-		#
-		-Wcast-align
-		#
-		# Works only with Clang
-		#
-		-Wunreachable-code
-		#
-		# Works only with Clang but generates a lot of warnings
-		# (about glib library not using Doxygen)
-		#
-		-Wdocumentation
-		#
-		# Works only with GCC 7
-		#
-		-Wduplicated-branches
-		#
-		# No longer supported by El Capitan clang on C++
-		# XXX - is this one of those where CMake's check
-		# doesn't fail, so it won't reject this?
-		#
-		-fno-delete-null-pointer-checks
-	)
-
-	set(C_EXTRA_WARN_FLAGS
-		# The following are C only, not C++
-		#
-		# Due to various places where APIs we don't control
-		# require us to cast away constness, we can probably
-		# never enable this one with -Werror.
-		#
-		-Wbad-function-cast
-	)
-
-	set(CXX_EXTRA_WARN_FLAGS
-	)
-
 	if(ENABLE_EXTRA_COMPILER_WARNINGS)   # This overrides -Werror
-		set(COMMON_WARN_FLAGS ${COMMON_WARN_FLAGS} ${COMMON_EXTRA_WARN_FLAGS})
-		set(C_WARN_FLAGS ${C_WARN_FLAGS} ${C_EXTRA_WARN_FLAGS})
-		set(CXX_WARN_FLAGS ${CXX_WARN_FLAGS} ${CXX_EXTRA_WARN_FLAGS})
+		list(APPEND WIRESHARK_COMMON_FLAGS
+			# The following are for C and C++
+			-Wpedantic
+			#
+			# As we use variadic macros, we don't want warnings
+			# about them, even with -Wpedantic.
+			#
+			-Wno-variadic-macros
+			#
+			# Various code blocks this one.
+			#
+			-Woverflow
+			-fstrict-overflow -Wstrict-overflow=4
+			#
+			# Due to various places where APIs we don't control
+			# require us to cast away constness, we can probably
+			# never enable this one with -Werror.
+			#
+			-Wcast-qual
+			#
+			# Some generated ASN.1 dissectors block this one;
+			# multiple function declarations for the same
+			# function are being generated.
+			#
+			-Wredundant-decls
+			#
+			# Some loops are safe, but it's hard to convince the
+			# compiler of that.
+			#
+			-Wunsafe-loop-optimizations
+			#
+			# All the registration functions block these for now.
+			#
+			-Wmissing-prototypes
+			-Wmissing-declarations
+			#
+			# A bunch of "that might not work on SPARC" code blocks
+			# this one for now; some of it is code that *will* work
+			# on SPARC, such as casts of "struct sockaddr *" to
+			# "struct sockaddr_in *", which are required by some
+			# APIs such as getifaddrs().
+			#
+			-Wcast-align
+			#
+			# Works only with Clang
+			#
+			-Wunreachable-code
+			#
+			# Works only with Clang but generates a lot of warnings
+			# (about glib library not using Doxygen)
+			#
+			-Wdocumentation
+			#
+			# Works only with GCC 7
+			#
+			-Wduplicated-branches
+			#
+			# No longer supported by El Capitan clang on C++
+			# XXX - is this one of those where CMake's check
+			# doesn't fail, so it won't reject this?
+			#
+			-fno-delete-null-pointer-checks
+		)
+
+		list(APPEND WIRESHARK_C_ONLY_FLAGS
+			# The following are C only, not C++
+			#
+			# Due to various places where APIs we don't control
+			# require us to cast away constness, we can probably
+			# never enable this one with -Werror.
+			#
+			-Wbad-function-cast
+		)
+
+		list(APPEND WIRESHARK_CXX_ONLY_FLAGS
+		)
 	endif()
 
 	add_definitions(
@@ -683,29 +703,13 @@ else() # ! MSVC
 	endif()
 
 	set(WIRESHARK_LD_FLAGS
+		# See also CheckCLinkerFlag.cmake
 		-Wl,--as-needed
 		# -flto
 		# -fwhopr
 		# -fwhole-program
 	)
-	# CMAKE_POSITION_INDEPENDENT_CODE is only supported starting with CMake
-	# 2.8.9. Do not add -pie automatically for older versions.
-	#
-	# XXX - are there other compilers that don't support -pie?  It's
-	# not as if the only platforms we support are Windows and Linux....
-	#
-	if(NOT CMAKE_VERSION VERSION_LESS "2.8.9")
-		set(WIRESHARK_LD_FLAGS ${WIRESHARK_LD_FLAGS}
-			-pie
-		)
-	endif()
 endif() # ! MSVC
-
-set( C_FLAG_TESTS ${WIRESHARK_COMMON_FLAGS} ${WIRESHARK_C_ONLY_FLAGS} )
-set( CXX_FLAG_TESTS ${WIRESHARK_COMMON_FLAGS} ${WIRESHARK_CXX_ONLY_FLAGS} )
-
-set( C_WARN_TESTS ${COMMON_WARN_FLAGS} ${C_WARN_FLAGS} )
-set( CXX_WARN_TESTS ${COMMON_WARN_FLAGS} ${CXX_WARN_FLAGS} )
 
 # Counterhack to work around some cache magic in CHECK_C_SOURCE_COMPILES
 include(CheckCCompilerFlag)
@@ -717,54 +721,30 @@ else()
 	set(BUILD_SHARED_LIBS 1)
 endif()
 
-# Sigh: Have to use THIS_FLAG instead of ${F} for some reason
-foreach(THIS_FLAG ${C_FLAG_TESTS})
-	string( REGEX REPLACE "[^a-zA-Z0-9_]+" "_" F ${THIS_FLAG} )
-	set(${F} ${THIS_FLAG})
-	set(V C_${F}_VALID)
-	message(STATUS "Checking for c-compiler flag: ${THIS_FLAG}")
-	check_c_compiler_flag("${ADDED_CMAKE_C_FLAGS} ${${F}}" ${V})
-	if (${${V}})
-		set(ADDED_CMAKE_C_FLAGS "${ADDED_CMAKE_C_FLAGS} ${${F}}")
+function(test_compiler_flag _lang _this_flag _valid_flags_var)
+	string(MAKE_C_IDENTIFIER "${_lang}${_this_flag}_VALID" _flag_var)
+	set(_test_flags "${${_valid_flags_var}} ${_this_flag}")
+	if(_lang STREQUAL "C")
+		check_c_compiler_flag("${_test_flags}" ${_flag_var})
+	elseif(_lang STREQUAL "CXX")
+		check_cxx_compiler_flag("${_test_flags}" ${_flag_var})
+	else()
+		message(FATAL_ERROR "Language must be C or CXX")
 	endif()
+	if (${_flag_var})
+		set(${_valid_flags_var} "${_test_flags}" PARENT_SCOPE)
+	endif()
+endfunction()
+
+foreach(THIS_FLAG ${WIRESHARK_COMMON_FLAGS} ${WIRESHARK_C_ONLY_FLAGS})
+	test_compiler_flag(C ${THIS_FLAG} ADDED_CMAKE_C_FLAGS)
 endforeach()
 set(CMAKE_C_FLAGS "${ADDED_CMAKE_C_FLAGS} ${CMAKE_C_FLAGS}")
 
-foreach(THIS_FLAG ${CXX_FLAG_TESTS})
-	string( REGEX REPLACE "[^a-zA-Z0-9_]+" "_" F ${THIS_FLAG} )
-	set(${F} ${THIS_FLAG})
-	set(V CXX_${F}_VALID)
-	message(STATUS "Checking for c++-compiler flag: ${THIS_FLAG}")
-	check_cxx_compiler_flag("${ADDED_CMAKE_CXX_FLAGS} ${${F}}" ${V})
-	if (${${V}})
-		set(ADDED_CMAKE_CXX_FLAGS "${ADDED_CMAKE_CXX_FLAGS} ${${F}}")
-	endif()
+foreach(THIS_FLAG ${WIRESHARK_COMMON_FLAGS} ${WIRESHARK_CXX_ONLY_FLAGS})
+	test_compiler_flag(CXX ${THIS_FLAG} ADDED_CMAKE_CXX_FLAGS)
 endforeach()
 set(CMAKE_CXX_FLAGS "${ADDED_CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
-
-foreach(THIS_FLAG ${C_WARN_TESTS})
-	string( REGEX REPLACE "[^a-zA-Z0-9_]+" "_" F ${THIS_FLAG} )
-	set(${F} ${THIS_FLAG})
-	set(V C_${F}_VALID)
-	message(STATUS "Checking for c-compiler flag: ${THIS_FLAG}")
-	check_c_compiler_flag("${C_FLAG_TESTS} ${${F}}" ${V})
-	if (${${V}})
-		set(ADDED_WARN_C_FLAGS "${ADDED_WARN_C_FLAGS} ${${F}}")
-	endif()
-endforeach()
-set(CMAKE_C_FLAGS "${ADDED_WARN_C_FLAGS} ${CMAKE_C_FLAGS}")
-
-foreach(THIS_FLAG ${CXX_WARN_TESTS})
-	string( REGEX REPLACE "[^a-zA-Z0-9_]+" "_" F ${THIS_FLAG} )
-	set(${F} ${THIS_FLAG})
-	set(V CXX_${F}_VALID)
-	message(STATUS "Checking for c++-compiler flag: ${THIS_FLAG}")
-	check_cxx_compiler_flag("${CXX_FLAG_TESTS} ${${F}}" ${V})
-	if (${${V}})
-		set(ADDED_WARN_CXX_FLAGS "${ADDED_WARN_CXX_FLAGS} ${${F}}")
-	endif()
-endforeach()
-set(CMAKE_CXX_FLAGS "${ADDED_WARN_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
 
 include(CMakePushCheckState)
 
@@ -816,16 +796,42 @@ if(ENABLE_UBSAN)
 	set(CMAKE_CXX_FLAGS "-fsanitize=undefined ${CMAKE_CXX_FLAGS}")
 endif()
 
+if(ENABLE_FUZZER)
+	# Available since Clang >= 6
+	# Will enable coverage flags which can be used by the fuzzshark target.
+	cmake_push_check_state()
+	set(CMAKE_REQUIRED_LIBRARIES "-fsanitize=fuzzer-no-link")
+	check_c_compiler_flag(-fsanitize=fuzzer C__fsanitize_fuzzer_no_link_VALID)
+	check_cxx_compiler_flag(-fsanitize=fuzzer CXX__fsanitize_fuzzer_no_link_VALID)
+	cmake_pop_check_state()
+	if(NOT C__fsanitize_fuzzer_no_link_VALID OR NOT CXX__fsanitize_fuzzer_no_link_VALID)
+		message(FATAL_ERROR "ENABLE_FUZZER was requested, but not supported!")
+	endif()
+	set(CMAKE_C_FLAGS "-fsanitize=fuzzer-no-link ${CMAKE_C_FLAGS}")
+	set(CMAKE_CXX_FLAGS "-fsanitize=fuzzer-no-link ${CMAKE_CXX_FLAGS}")
+endif()
+
 set(WERROR_COMMON_FLAGS "")
-set(NO_ERROR_DEPRECATED_DECLARATIONS_COMPILE_FLAGS "")
 if(NOT DISABLE_WERROR AND NOT ENABLE_EXTRA_COMPILER_WARNINGS)
 	if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
 		set(WERROR_COMMON_FLAGS "/WX")
 	else()
-		check_c_compiler_flag(-Werror WERROR)
-		if (WERROR)
-			set(WERROR_COMMON_FLAGS "-Werror")
-			set(NO_ERROR_DEPRECATED_DECLARATIONS_COMPILE_FLAGS "-Wno-error=deprecated-declarations")
+		#
+		# If a warning has been enabled by -Wall or -W,
+		# and have specified -Werror, there appears to be
+		# no way, in Apple's llvm-gcc, to prevent that
+		# particular warning from giving an error - not
+		# with a pragma, not with -Wno-{warning}, and not
+		# with -Wno-error={warning}.
+		#
+		# Therefore, with that compiler, we just disable
+		# -Werror.
+		#
+		if ((NOT APPLE) OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+			check_c_compiler_flag(-Werror WERROR)
+			if (WERROR)
+				set(WERROR_COMMON_FLAGS "-Werror")
+			endif()
 		endif()
 	endif()
 endif()
@@ -867,18 +873,31 @@ if( NOT CMAKE_C_COMPILER_ID MATCHES "MSVC")
 endif()
 
 include(CheckCLinkerFlag)
-set(_C 0)
-# Sigh: Have to use THIS_FLAG instead of ${F} for some reason
-foreach(THIS_FLAG ${WIRESHARK_LD_FLAGS})
-	set(F WS_LD_FLAG_${_C})
-	set(${F} ${THIS_FLAG})
-	set(V WS_LD_FLAG_VALID${_C})
-	check_c_linker_flag(${${F}} ${V})
-	if (${${V}})
-		set(WS_LINK_FLAGS "${WS_LINK_FLAGS} ${${F}}")
+
+if(NOT CMAKE_C_COMPILER_ID MATCHES "MSVC" AND NOT OSS_FUZZ)
+	#
+	# The -pie linker option produces a position-independent executable.
+	# Some Linux distributions have this enabled by default in the compiler,
+	# so setting it here will be superfluous though.
+	#
+	# Note that linking with static libraries that are not position
+	# independent may fail, the user can set CMAKE_EXE_LINKER_FLAGS=-no-pie
+	# as a workaround.
+	#
+	check_c_linker_flag(-pie LINK_pie_VALID)
+	if(LINK_pie_VALID)
+		set(CMAKE_EXE_LINKER_FLAGS "-pie ${CMAKE_EXE_LINKER_FLAGS}")
 	endif()
-	math(EXPR _C "${_C} + 1")
+endif()
+
+foreach(THIS_FLAG ${WIRESHARK_LD_FLAGS})
+	string(MAKE_C_IDENTIFIER "LINK${THIS_FLAG}_VALID" _flag_var)
+	check_c_linker_flag(${THIS_FLAG} ${_flag_var})
+	if (${_flag_var})
+		set(WS_LINK_FLAGS "${WS_LINK_FLAGS} ${THIS_FLAG}")
+	endif()
 endforeach()
+message(STATUS "Linker flags: ${WS_LINK_FLAGS}")
 
 if(APPLE AND EXISTS /usr/local/opt/gettext)
 	# GLib on macOS requires libintl. Homebrew installs gettext (and
@@ -903,8 +922,7 @@ set(GLIB2_MIN_VERSION 2.32.0)
 set(GTHREAD2_OPTIONS REQUIRED)
 set(GCRYPT_OPTIONS "1.4.2" REQUIRED)
 set(Perl_OPTIONS REQUIRED)
-set(PythonInterp_FIND_VERSION 2)
-set(Python_ADDITIONAL_VERSIONS 3)
+set(PythonInterp_OPTIONS "3.4" REQUIRED)
 set(YACC_OPTIONS REQUIRED)
 
 if (NOT WIN32)
@@ -915,8 +933,6 @@ endif()
 set(PACKAGELIST ${PACKAGELIST} LIBSSH)
 set(LIBSSH_OPTIONS "0.6")
 
-set(PACKAGELIST ${PACKAGELIST} JSONGLIB)
-
 if(ENABLE_PCAP)
 	set(PACKAGELIST ${PACKAGELIST} PCAP)
 endif()
@@ -925,6 +941,9 @@ if(ENABLE_AIRPCAP)
 	set(PACKAGELIST ${PACKAGELIST} AIRPCAP)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	set(PACKAGELIST ${PACKAGELIST} Systemd)
+endif()
 
 # Build the Qt GUI?
 if(BUILD_wireshark)
@@ -1028,6 +1047,7 @@ endif()
 # Embedded Lua interpreter
 if(ENABLE_LUA)
 	set(PACKAGELIST ${PACKAGELIST} LUA)
+	set(LUA_OPTIONS "5.1")
 endif()
 
 if(ENABLE_NETLINK)
@@ -1124,16 +1144,12 @@ foreach(PACKAGE ${PACKAGELIST})
 	endif()
 endforeach()
 
-# Provide Windows system lib names
-include( UseWinLibs )
-
 # dist target that prepares source dir
 # XXX Duplicated in the RPM section below.
 add_custom_target(dist
 	COMMAND ./tools/git-export-release.sh -d "${CMAKE_BINARY_DIR}"
 	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
-
 
 if(HAVE_LIBAIRPCAP)
 	set(HAVE_AIRPCAP 1)
@@ -1150,9 +1166,6 @@ if(MAXMINDDB_FOUND)
 endif()
 if(LIBSSH_FOUND)
 	set(HAVE_LIBSSH 1)
-endif()
-if(JSONGLIB_FOUND)
-	set(HAVE_JSONGLIB 1)
 endif()
 if(NGHTTP2_FOUND)
 	set(HAVE_NGHTTP2 1)
@@ -1263,6 +1276,16 @@ endif()
 
 if(ENABLE_CHECKHF_CONFLICT)
 	set(ENABLE_CHECK_FILTER 1)
+endif()
+
+#
+# Platform-specific additional libraries.
+#
+if(WIN32)
+	set(WIN_PSAPI_LIBRARY    psapi.lib)
+	set(WIN_WSOCK32_LIBRARY  wsock32.lib)
+	set(WIN_COMCTL32_LIBRARY comctl32.lib )
+	set(WIN_VERSION_LIBRARY  version.lib)
 endif()
 
 if(APPLE)
@@ -1466,36 +1489,23 @@ string (REPLACE ";" " " DOXYGEN_TOP_LEVEL_SOURCES "${TOP_LEVEL_SOURCE_LIST}")
 set(DOXYGEN_INPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 set(DOXYGEN_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-set(ICON_PATH "${CMAKE_SOURCE_DIR}/image/")
-set( IN_FILES
-	doxygen.cfg.in
-	image/libwireshark.rc.in
-	image/text2pcap.rc.in
-	image/capinfos.rc.in
-	image/wireshark.rc.in
-	image/mergecap.rc.in
-	image/tshark.rc.in
-	image/dumpcap.rc.in
-	image/reordercap.rc.in
-	image/rawshark.rc.in
-	image/file_dlg_win32.rc
-	image/tfshark.rc.in
-	image/editcap.rc.in
-	image/captype.rc.in
-	image/libwscodecs.rc.in
-	image/libwsutil.rc.in
-	image/wiretap.rc.in
-	image/wireshark.exe.manifest.in
-	packaging/macosx/Info.plist.in
-	packaging/macosx/osx-app.sh.in
-	packaging/macosx/osx-dmg.sh.in
-	packaging/macosx/Wireshark_package.pmdoc/index.xml.in
-	wireshark.pc.in
+set(CFG_OUT_FILES
+	doxygen.cfg
+	image/libwireshark.rc
+	image/wireshark.rc
+	image/dumpcap.rc
+	image/libwscodecs.rc
+	image/libwsutil.rc
+	image/wiretap.rc
+	image/wireshark.exe.manifest
+	packaging/macosx/Info.plist
+	packaging/macosx/osx-app.sh
+	packaging/macosx/osx-dmg.sh
+	packaging/macosx/Wireshark_package.pmdoc/index.xml
+	wireshark.pc
 )
-foreach( _in_file ${IN_FILES} )
-	get_filename_component( _path ${_in_file} PATH )
-	string( REGEX REPLACE "(.*)\\.in" "\\1" _outfile ${_in_file}  )
-	configure_file( ${CMAKE_SOURCE_DIR}/${_in_file} ${CMAKE_BINARY_DIR}/${_outfile} @ONLY )
+foreach( _cfg_file ${CFG_OUT_FILES} )
+	configure_file( ${CMAKE_SOURCE_DIR}/${_cfg_file}.in ${CMAKE_BINARY_DIR}/${_cfg_file} @ONLY )
 endforeach()
 
 include(FeatureSummary)
@@ -1586,7 +1596,6 @@ set(SHARK_COMMON_SRC
 
 set(TSHARK_TAP_SRC
 	${CMAKE_SOURCE_DIR}/ui/cli/tap-camelsrt.c
-	${CMAKE_SOURCE_DIR}/ui/cli/tap-comparestat.c
 	${CMAKE_SOURCE_DIR}/ui/cli/tap-diameter-avp.c
 	${CMAKE_SOURCE_DIR}/ui/cli/tap-expert.c
 	${CMAKE_SOURCE_DIR}/ui/cli/tap-exportobject.c
@@ -1622,12 +1631,20 @@ set(TSHARK_TAP_SRC
 set(INSTALL_DIRS
 	diameter
 	dtds
-	${DATAFILE_DIR}/help
 	profiles
 	radius
 	tpncp
 	wimaxasncp
 )
+
+# FIXME: The help files are textfified on Windows into the staging dir.
+# The DATAFILE_DIR depends on CMAKE_CFG_INTDIR therefore it cannot be
+# added to an install() command with build systems supporting multiple
+# configurations in the build tree (e.g.: Visual Studio).
+if(NOT WIN32)
+	list(APPEND INSTALL_DIRS help)
+endif()
+
 
 set(INSTALL_FILES
 	cfilters
@@ -1694,7 +1711,6 @@ set(LIBEPAN_LIBS
 		${CARES_LIBRARIES}
 		${KERBEROS_LIBRARIES}
 		${LUA_LIBRARIES}
-		${PYTHON_LIBRARIES}
 		${GEOIP_LIBRARIES}
 		${GCRYPT_LIBRARIES}
 		${GNUTLS_LIBRARIES}
@@ -1742,9 +1758,6 @@ if(WIN32)
 	if (LIBSSH_FOUND)
 		list (APPEND OPTIONAL_DLLS "${LIBSSH_DLL_DIR}/${LIBSSH_DLL}")
 	endif(LIBSSH_FOUND)
-	if (JSONGLIB_FOUND)
-		list (APPEND OPTIONAL_DLLS "${JSONGLIB_DLL_DIR}/${JSONGLIB_DLL}")
-	endif(JSONGLIB_FOUND)
 	foreach( _dll ${GCRYPT_DLLS} )
 		list (APPEND OPTIONAL_DLLS "${GCRYPT_DLL_DIR}/${_dll}")
 	endforeach(_dll)
@@ -2096,9 +2109,9 @@ if(BUILD_wireshark AND QT_FOUND)
 	)
 	set(wireshark_FILES
 		${WIRESHARK_SRC}
-		${CMAKE_BINARY_DIR}/image/wireshark.rc
 		${PLATFORM_UI_RC_FILES}
 	)
+	set_executable_resources(wireshark "Wireshark" UNIQUE_RC)
 endif()
 
 if(ENABLE_APPLICATION_BUNDLE)
@@ -2262,7 +2275,7 @@ endif()
 # Common properties for CLI executables
 macro(set_extra_executable_properties _executable _folder)
 	set_target_properties(${_executable} PROPERTIES
-		LINK_FLAGS "${WS_LINK_FLAGS}"
+		LINK_FLAGS "${WILDCARD_OBJ} ${WS_LINK_FLAGS}"
 		FOLDER ${_folder}
 	)
 
@@ -2309,9 +2322,9 @@ if(BUILD_tshark)
 		tshark.c
 		${TSHARK_TAP_SRC}
 		${SHARK_COMMON_SRC}
-		${CMAKE_BINARY_DIR}/image/tshark.rc
 	)
 
+	set_executable_resources(tshark "TShark" UNIQUE_RC)
 	add_executable(tshark ${tshark_FILES})
 	add_dependencies(tshark version)
 	set_extra_executable_properties(tshark "Executables")
@@ -2331,8 +2344,8 @@ if(BUILD_tfshark)
 		tfshark.c
 		${TSHARK_TAP_SRC}
 		${SHARK_COMMON_SRC}
-		${CMAKE_BINARY_DIR}/image/tfshark.rc
 	)
+	set_executable_resources(tfshark "TFShark")
 	add_executable(tfshark ${tfshark_FILES})
 	add_dependencies(tfshark version)
 	set_extra_executable_properties(tfshark "Executables")
@@ -2352,8 +2365,8 @@ if(BUILD_rawshark AND PCAP_FOUND)
 	set(rawshark_FILES
 		${SHARK_COMMON_SRC}
 		rawshark.c
-		${CMAKE_BINARY_DIR}/image/rawshark.rc
 	)
+	set_executable_resources(rawshark "Rawshark")
 	add_executable(rawshark ${rawshark_FILES})
 	add_dependencies(rawshark version)
 	set_extra_executable_properties(rawshark "Executables")
@@ -2376,6 +2389,7 @@ if(BUILD_sharkd)
 		sharkd_session.c
 		${SHARK_COMMON_SRC}
 	)
+	set_executable_resources(sharkd "SharkD")
 	add_executable(sharkd ${sharkd_FILES})
 	add_dependencies(sharkd version)
 	set_extra_executable_properties(sharkd "Executables")
@@ -2420,20 +2434,8 @@ if(BUILD_randpkt)
 	install(TARGETS randpkt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if(BUILD_fuzzshark)
-	set(fuzzshark_LIBS
-		wiretap
-		${LIBEPAN_LIBS}
-	)
-	set(fuzzshark_FILES
-		tools/oss-fuzzshark/fuzzshark.c
-		tools/oss-fuzzshark/StandaloneFuzzTargetMain.c
-		version_info.c
-	)
-	add_executable(fuzzshark ${fuzzshark_FILES})
-	add_dependencies(fuzzshark version)
-	set_extra_executable_properties(fuzzshark "Executables")
-	target_link_libraries(fuzzshark ${fuzzshark_LIBS})
+if(BUILD_fuzzshark OR ENABLE_FUZZER OR OSS_FUZZ)
+	add_subdirectory(fuzz)
 endif()
 
 if(BUILD_text2pcap)
@@ -2450,8 +2452,9 @@ if(BUILD_text2pcap)
 	add_lex_files(text2pcap_LEX_FILES text2pcap_FILES
 		text2pcap-scanner.l
 	)
-	add_executable(text2pcap ${text2pcap_FILES}
-		${CMAKE_BINARY_DIR}/image/text2pcap.rc)
+	set_executable_resources(text2pcap "Text2pcap"
+		COPYRIGHT_INFO "2001 Ashok Narayanan <ashokn@cisco.com>")
+	add_executable(text2pcap ${text2pcap_FILES})
 	add_dependencies(text2pcap version)
 	set_extra_executable_properties(text2pcap "Executables")
 	target_link_libraries(text2pcap ${text2pcap_LIBS})
@@ -2468,8 +2471,8 @@ if(BUILD_mergecap)
 	set(mergecap_FILES
 		mergecap.c
 		version_info.c
-		${CMAKE_BINARY_DIR}/image/mergecap.rc
 	)
+	set_executable_resources(mergecap "Mergecap")
 	add_executable(mergecap ${mergecap_FILES})
 	add_dependencies(mergecap version)
 	set_extra_executable_properties(mergecap "Executables")
@@ -2487,8 +2490,8 @@ if(BUILD_reordercap)
 	set(reordercap_FILES
 		reordercap.c
 		version_info.c
-		${CMAKE_BINARY_DIR}/image/reordercap.rc
 	)
+	set_executable_resources(reordercap "Reordercap")
 	add_executable(reordercap ${reordercap_FILES})
 	add_dependencies(reordercap version)
 	set_extra_executable_properties(reordercap "Executables")
@@ -2508,8 +2511,8 @@ if(BUILD_capinfos)
 	set(capinfos_FILES
 		capinfos.c
 		version_info.c
-		${CMAKE_BINARY_DIR}/image/capinfos.rc
 	)
+	set_executable_resources(capinfos "Capinfos")
 	add_executable(capinfos ${capinfos_FILES})
 	add_dependencies(capinfos version)
 	set_extra_executable_properties(capinfos "Executables")
@@ -2528,8 +2531,8 @@ if(BUILD_captype)
 	set(captype_FILES
 		captype.c
 		version_info.c
-		${CMAKE_BINARY_DIR}/image/captype.rc
 	)
+	set_executable_resources(captype "Captype")
 	add_executable(captype ${captype_FILES})
 	add_dependencies(captype version)
 	set_extra_executable_properties(captype "Executables")
@@ -2548,8 +2551,8 @@ if(BUILD_editcap)
 	set(editcap_FILES
 		editcap.c
 		version_info.c
-		${CMAKE_BINARY_DIR}/image/editcap.rc
 	)
+	set_executable_resources(editcap "Editcap")
 	add_executable(editcap ${editcap_FILES})
 	add_dependencies(editcap version)
 	set_extra_executable_properties(editcap "Executables")
@@ -2574,14 +2577,12 @@ if(BUILD_dumpcap AND PCAP_FOUND)
 	)
 	set(dumpcap_FILES
 		capture_opts.c
-		capture_stop_conditions.c
-		conditions.c
 		dumpcap.c
 		ringbuffer.c
 		sync_pipe_write.c
 		version_info.c
-		${CMAKE_BINARY_DIR}/image/dumpcap.rc
 	)
+	set_executable_resources(dumpcap "Dumpcap" UNIQUE_RC)
 	add_executable(dumpcap ${dumpcap_FILES})
 	add_dependencies(dumpcap version)
 	set_extra_executable_properties(dumpcap "Executables")
@@ -2748,10 +2749,13 @@ if(RPMBUILD_EXECUTABLE)
 	if(CMAKE_GENERATOR STREQUAL "Ninja")
 		list(APPEND _rpmbuild_with_args --with ninja)
 	endif()
+	if(CCACHE_EXECUTABLE)
+		list(APPEND _rpmbuild_with_args --with ccache)
+	endif()
 	if (BUILD_wireshark)
 		list(APPEND _rpmbuild_with_args --with qt5)
 	endif()
-	if (BUILD_mmdbresolve)
+	if (MAXMINDDB_FOUND)
 		list(APPEND _rpmbuild_with_args --with mmdbresolve)
 	endif()
 	if (LUA_FOUND)
@@ -2774,6 +2778,9 @@ if(RPMBUILD_EXECUTABLE)
 	endif()
 	if (NGHTTP2_FOUND)
 		list(APPEND _rpmbuild_with_args --with nghttp2)
+	endif()
+	if (SYSTEMD_FOUND)
+		list(APPEND _rpmbuild_with_args --with sdjournal)
 	endif()
 
 	execute_process(
@@ -2880,14 +2887,9 @@ set(SHARK_PUBLIC_HEADERS
 	${CMAKE_BINARY_DIR}/ws_version.h
 )
 
-if(NOT WIN32)
-	install(
-		FILES
-			${SHARK_PUBLIC_HEADERS}
-		DESTINATION
-			${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}
-	)
-endif()
+install(FILES ${SHARK_PUBLIC_HEADERS}
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}
+)
 
 # Install icons and other desktop files for Freedesktop.org-compliant desktops.
 if((BUILD_wireshark AND QT_FOUND) AND NOT (WIN32 OR APPLE))

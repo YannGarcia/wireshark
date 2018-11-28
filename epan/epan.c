@@ -12,7 +12,6 @@
 #include <stdarg.h>
 
 #include <wsutil/wsgcrypt.h>
-#include <wsutil/ws_printf.h> /* ws_g_warning */
 
 #ifdef HAVE_LIBGNUTLS
 #include <gnutls/gnutls.h>
@@ -56,6 +55,7 @@
 #include "reassemble.h"
 #include "srt_table.h"
 #include "stats_tree.h"
+#include "secrets.h"
 #include <dtd.h>
 
 #ifdef HAVE_PLUGINS
@@ -176,7 +176,7 @@ void epan_register_plugin(const epan_plugin *plug)
 #endif
 
 gboolean
-epan_init(register_cb cb, gpointer client_data)
+epan_init(register_cb cb, gpointer client_data, gboolean load_plugins)
 {
 	volatile gboolean status = TRUE;
 
@@ -198,9 +198,11 @@ epan_init(register_cb cb, gpointer client_data)
 
 	except_init();
 
+	if (load_plugins) {
 #ifdef HAVE_PLUGINS
-	libwireshark_plugins = plugins_init(WS_PLUGIN_EPAN);
+		libwireshark_plugins = plugins_init(WS_PLUGIN_EPAN);
 #endif
+	}
 
 	/* initialize libgcrypt (beware, it won't be thread-safe) */
 	gcry_check_version(NULL);
@@ -227,6 +229,7 @@ epan_init(register_cb cb, gpointer client_data)
 		prefs_init();
 		expert_init();
 		packet_init();
+		secrets_init();
 		conversation_init();
 		capture_dissector_init();
 		reassembly_tables_init();
@@ -315,6 +318,7 @@ epan_cleanup(void)
 	prefs_cleanup();
 	proto_cleanup();
 
+	secrets_cleanup();
 	conversation_filters_cleanup();
 	reassembly_table_cleanup();
 	tap_cleanup();
@@ -405,7 +409,7 @@ epan_get_frame_ts(const epan_t *session, guint32 frame_num)
 		abs_ts = session->funcs.get_frame_ts(session->prov, frame_num);
 
 	if (!abs_ts)
-		ws_g_warning("!!! couldn't get frame ts for %u !!!\n", frame_num);
+		g_warning("!!! couldn't get frame ts for %u !!!\n", frame_num);
 
 	return abs_ts;
 }

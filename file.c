@@ -41,6 +41,7 @@
 #include <epan/strutil.h>
 #include <epan/addr_resolv.h>
 #include <epan/color_filters.h>
+#include <epan/secrets.h>
 
 #include "cfile.h"
 #include "file.h"
@@ -323,6 +324,7 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
 
   wtap_set_cb_new_ipv4(cf->provider.wth, add_ipv4_name);
   wtap_set_cb_new_ipv6(cf->provider.wth, (wtap_new_ipv6_callback_t) add_ipv6_name);
+  wtap_set_cb_new_secrets(cf->provider.wth, secrets_wtap_callback);
 
   return CF_OK;
 
@@ -547,9 +549,9 @@ cf_read(capture_file *cf, gboolean reloading)
   else
     cf_callback_invoke(cf_cb_file_read_started, cf);
 
-  /* Record whether the file is compressed.
+  /* Record the file's compression type.
      XXX - do we know this at open time? */
-  cf->iscompressed = wtap_iscompressed(cf->provider.wth);
+  cf->compression_type = wtap_get_compression_type(cf->provider.wth);
 
   /* The packet list window will be empty until the file is completly loaded */
   packet_list_freeze();
@@ -2058,6 +2060,7 @@ process_specified_records(capture_file *cf, packet_range_t *range,
 {
   guint32          framenum;
   frame_data      *fdata;
+  wtap_rec         rec;
   Buffer           buf;
   psp_return_t     ret     = PSP_FINISHED;
 
@@ -2068,7 +2071,6 @@ process_specified_records(capture_file *cf, packet_range_t *range,
   GTimeVal         progbar_start_time;
   gchar            progbar_status_str[100];
   range_process_e  process_this;
-  wtap_rec         rec;
 
   wtap_rec_init(&rec);
   ws_buffer_init(&buf, 1500);
@@ -4228,9 +4230,9 @@ rescan_file(capture_file *cf, const char *fname, gboolean is_tempfile)
 
   cf_callback_invoke(cf_cb_file_rescan_started, cf);
 
-  /* Record whether the file is compressed.
+  /* Record the file's compression type.
      XXX - do we know this at open time? */
-  cf->iscompressed = wtap_iscompressed(cf->provider.wth);
+  cf->compression_type = wtap_get_compression_type(cf->provider.wth);
 
   /* Find the size of the file. */
   size = wtap_file_size(cf->provider.wth, NULL);
@@ -4333,8 +4335,8 @@ rescan_file(capture_file *cf, const char *fname, gboolean is_tempfile)
 
 cf_write_status_t
 cf_save_records(capture_file *cf, const char *fname, guint save_format,
-                gboolean compressed, gboolean discard_comments,
-                gboolean dont_reopen)
+                wtap_compression_type compression_type,
+                gboolean discard_comments, gboolean dont_reopen)
 {
   gchar           *err_info;
   gchar           *fname_new = NULL;
@@ -4364,7 +4366,7 @@ cf_save_records(capture_file *cf, const char *fname, guint save_format,
 
   addr_lists = get_addrinfo_list();
 
-  if (save_format == cf->cd_t && compressed == cf->iscompressed
+  if (save_format == cf->cd_t && compression_type == cf->compression_type
       && !discard_comments && !cf->unsaved_changes
       && (wtap_addrinfo_list_empty(addr_lists) || !wtap_dump_has_name_resolution(save_format))) {
     /* We're saving in the format it's already in, and we're not discarding
@@ -4448,18 +4450,18 @@ cf_save_records(capture_file *cf, const char *fname, guint save_format,
        or moving the capture file, we have to do it by writing the packets
        out in Wiretap. */
 
-    GArray                      *shb_hdrs = NULL;
-    wtapng_iface_descriptions_t *idb_inf = NULL;
-    GArray                      *nrb_hdrs = NULL;
+    wtap_dump_params params;
     int encap;
 
-    /* XXX: what free's this shb_hdr? */
-    shb_hdrs = wtap_file_get_shb_for_new_file(cf->provider.wth);
-    idb_inf = wtap_file_get_idb_info(cf->provider.wth);
-    nrb_hdrs = wtap_file_get_nrb_for_new_file(cf->provider.wth);
+    /* XXX: what free's params.shb_hdr? */
+    wtap_dump_params_init(&params, cf->provider.wth);
 
     /* Determine what file encapsulation type we should use. */
     encap = wtap_dump_file_encap_type(cf->linktypes);
+    params.encap = encap;
+
+    /* Use the snaplen from cf (XXX - does wtap_dump_params_init handle that?) */
+    params.snaplen = cf->snap;
 
     if (file_exists(fname)) {
       /* We're overwriting an existing file; write out to a new file,
@@ -4470,14 +4472,14 @@ cf_save_records(capture_file *cf, const char *fname, guint save_format,
          we *HAVE* to do that, otherwise we're overwriting the file
          from which we're reading the packets that we're writing!) */
       fname_new = g_strdup_printf("%s~", fname);
-      pdh = wtap_dump_open_ng(fname_new, save_format, encap, cf->snap,
-                              compressed, shb_hdrs, idb_inf, nrb_hdrs, &err);
+      pdh = wtap_dump_open(fname_new, save_format, compression_type, &params,
+                           &err);
     } else {
-      pdh = wtap_dump_open_ng(fname, save_format, encap, cf->snap,
-                              compressed, shb_hdrs, idb_inf, nrb_hdrs, &err);
+      pdh = wtap_dump_open(fname, save_format, compression_type, &params, &err);
     }
-    g_free(idb_inf);
-    idb_inf = NULL;
+    /* XXX idb_inf is documented to be used until wtap_dump_close. */
+    g_free(params.idb_inf);
+    params.idb_inf = NULL;
 
     if (pdh == NULL) {
       cfile_dump_open_failure_alert_box(fname, err, save_format);
@@ -4692,15 +4694,13 @@ fail:
 cf_write_status_t
 cf_export_specified_packets(capture_file *cf, const char *fname,
                             packet_range_t *range, guint save_format,
-                            gboolean compressed)
+                            wtap_compression_type compression_type)
 {
   gchar                       *fname_new = NULL;
   int                          err;
   wtap_dumper                 *pdh;
   save_callback_args_t         callback_args;
-  GArray                      *shb_hdrs = NULL;
-  wtapng_iface_descriptions_t *idb_inf = NULL;
-  GArray                      *nrb_hdrs = NULL;
+  wtap_dump_params             params;
   int                          encap;
 
   packet_range_process_init(range);
@@ -4710,13 +4710,15 @@ cf_export_specified_packets(capture_file *cf, const char *fname,
      written, don't special-case the operation - read each packet
      and then write it out if it's one of the specified ones. */
 
-  /* XXX: what free's this shb_hdr? */
-  shb_hdrs = wtap_file_get_shb_for_new_file(cf->provider.wth);
-  idb_inf = wtap_file_get_idb_info(cf->provider.wth);
-  nrb_hdrs = wtap_file_get_nrb_for_new_file(cf->provider.wth);
+  /* XXX: what free's params.shb_hdr? */
+  wtap_dump_params_init(&params, cf->provider.wth);
 
   /* Determine what file encapsulation type we should use. */
   encap = wtap_dump_file_encap_type(cf->linktypes);
+  params.encap = encap;
+
+  /* Use the snaplen from cf (XXX - does wtap_dump_params_init handle that?) */
+  params.snaplen = cf->snap;
 
   if (file_exists(fname)) {
     /* We're overwriting an existing file; write out to a new file,
@@ -4727,14 +4729,14 @@ cf_export_specified_packets(capture_file *cf, const char *fname,
        we *HAVE* to do that, otherwise we're overwriting the file
        from which we're reading the packets that we're writing!) */
     fname_new = g_strdup_printf("%s~", fname);
-    pdh = wtap_dump_open_ng(fname_new, save_format, encap, cf->snap,
-                            compressed, shb_hdrs, idb_inf, nrb_hdrs, &err);
+    pdh = wtap_dump_open(fname_new, save_format, compression_type, &params,
+                         &err);
   } else {
-    pdh = wtap_dump_open_ng(fname, save_format, encap, cf->snap,
-                            compressed, shb_hdrs, idb_inf, nrb_hdrs, &err);
+    pdh = wtap_dump_open(fname, save_format, compression_type, &params, &err);
   }
-  g_free(idb_inf);
-  idb_inf = NULL;
+  /* XXX idb_inf is documented to be used until wtap_dump_close. */
+  g_free(params.idb_inf);
+  params.idb_inf = NULL;
 
   if (pdh == NULL) {
     cfile_dump_open_failure_alert_box(fname, err, save_format);

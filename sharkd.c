@@ -52,6 +52,7 @@
 #include <epan/epan_dissect.h>
 #include <epan/tap.h>
 #include <epan/uat-int.h>
+#include <epan/secrets.h>
 
 #include <codecs/codecs.h>
 
@@ -167,7 +168,7 @@ main(int argc, char *argv[])
      "-G" flag, as the "-G" flag dumps information registered by the
      dissectors, and we must do it before we read the preferences, in
      case any dissectors register preferences. */
-  if (!epan_init(NULL, NULL)) {
+  if (!epan_init(NULL, NULL, TRUE)) {
     ret = EPAN_INIT_FAIL;
     goto clean_exit;
   }
@@ -444,6 +445,7 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
 
   wtap_set_cb_new_ipv4(cf->provider.wth, add_ipv4_name);
   wtap_set_cb_new_ipv6(cf->provider.wth, (wtap_new_ipv6_callback_t) add_ipv6_name);
+  wtap_set_cb_new_secrets(cf->provider.wth, secrets_wtap_callback);
 
   return CF_OK;
 
@@ -544,6 +546,7 @@ sharkd_dissect_request(guint32 framenum, guint32 frame_ref_num, guint32 prev_dis
   ws_buffer_init(&buf, 1500);
 
   if (!wtap_seek_read(cfile.provider.wth, fdata->file_off, &rec, &buf, &err, &err_info)) {
+    wtap_rec_cleanup(&rec);
     ws_buffer_free(&buf);
     return -1; /* error reading the record */
   }
@@ -604,6 +607,7 @@ sharkd_dissect_columns(frame_data *fdata, guint32 frame_ref_num, guint32 prev_di
 
   if (!wtap_seek_read(cfile.provider.wth, fdata->file_off, &rec, &buf, &err, &err_info)) {
     col_fill_in_error(cinfo, fdata, FALSE, FALSE /* fill_fd_columns */);
+    wtap_rec_cleanup(&rec);
     ws_buffer_free(&buf);
     return -1; /* error reading the record */
   }

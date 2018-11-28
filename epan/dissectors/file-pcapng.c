@@ -20,6 +20,7 @@
 #include <epan/show_exception.h>
 #include <epan/addr_resolv.h>
 #include <epan/wmem/wmem.h>
+#include <wiretap/secrets-types.h>
 
 #include <epan/dissectors/packet-pcap_pktdata.h>
 
@@ -121,6 +122,10 @@ static int hf_pcapng_record_ipv6 = -1;
 static int hf_pcapng_record_name = -1;
 static int hf_pcapng_record_padding = -1;
 
+static int hf_pcapng_dsb_secrets_type = -1;
+static int hf_pcapng_dsb_secrets_length = -1;
+static int hf_pcapng_dsb_secrets_data = -1;
+
 static int hf_pcapng_darwin_process_id = -1;
 static int hf_pcapng_option_code_darwin_process_info = -1;
 static int hf_pcapng_option_darwin_process_name = -1;
@@ -203,6 +208,8 @@ static gboolean pref_dissect_next_layer = FALSE;
 #define BLOCK_ENHANCED_PACKET        0x00000006
 #define BLOCK_IRIG_TIMESTAMP         0x00000007
 #define BLOCK_ARINC_429              0x00000008
+#define BLOCK_SYSTEMD_JOURNAL        0x00000009
+#define BLOCK_DSB                    0x0000000a
 #define BLOCK_SECTION_HEADER         0x0A0D0D0A
 #define BLOCK_DARWIN_PROCESS         0x80000001
 
@@ -214,7 +221,11 @@ static const value_string block_type_vals[] = {
     { 0x00000005,  "Interface Statistics Block" },
     { 0x00000006,  "Enhanced Packet Block" },
     { 0x00000007,  "IRIG Timestamp Block" },
-    { 0x00000008,  "Arinc 429 in AFDX Encapsulation Information Block " },
+    { 0x00000008,  "Arinc 429 in AFDX Encapsulation Information Block" },
+    { 0x00000009,  "systemd Journal Export Block" },
+    { 0x0000000A,  "Decryption Secrets Block" },
+    { 0x00000204,  "Sysdig Event Block" },
+    { 0x00000208,  "Sysdig Event Block with flags" },
     { 0x0A0D0D0A,  "Section Header Block" },
     { 0x80000001,  "Darwin Process Event Block" },
     { 0, NULL }
@@ -522,6 +533,11 @@ static const value_string flags_reception_type_vals[] = {
     { 0x02,  "Multicast" },
     { 0x03,  "Broadcast" },
     { 0x04,  "Promiscuous" },
+    { 0, NULL }
+};
+
+static const value_string dsb_secrets_types_vals[] = {
+    { SECRETS_TYPE_TLS, "TLS Key Log" },
     { 0, NULL }
 };
 
@@ -1565,6 +1581,30 @@ static gint dissect_block(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
         offset += dissect_options(block_data_tree, pinfo, block_type, next_tvb, encoding, NULL);
 
         break;
+    case BLOCK_DSB:
+        {
+        guint32 secrets_length;
+
+        proto_tree_add_item(block_data_tree, hf_pcapng_dsb_secrets_type, tvb, offset, 4, encoding);
+        offset += 4;
+        proto_tree_add_item_ret_uint(block_data_tree, hf_pcapng_dsb_secrets_length, tvb, offset, 4, encoding, &secrets_length);
+        offset += 4;
+        proto_tree_add_item(block_data_tree, hf_pcapng_dsb_secrets_data, tvb, offset, secrets_length, encoding);
+        offset += secrets_length;
+
+        guint32 padlen = (4 - (secrets_length & 3)) & 3;
+        if (padlen) {
+            proto_tree_add_item(block_data_tree, hf_pcapng_record_padding, tvb, offset, padlen, ENC_NA);
+            offset += padlen;
+        }
+
+        if (block_data_length > 4 + 4 + secrets_length + padlen) {
+            next_tvb = tvb_new_subset_length(tvb, offset, block_data_length - 4 - 4 - secrets_length - padlen);
+            offset += dissect_options(block_data_tree, pinfo, block_type, next_tvb, encoding, NULL);
+        }
+        }
+
+        break;
     case BLOCK_DARWIN_PROCESS:
         proto_item_append_text(block_item, " %u", info->darwin_process_event_number);
         info->darwin_process_event_number += 1;
@@ -2129,6 +2169,21 @@ proto_register_pcapng(void)
         { &hf_pcapng_record_name,
             { "Name",                                      "pcapng.records.record.data.name",
             FT_STRINGZ, STR_ASCII, NULL, 0x00,
+            NULL, HFILL }
+        },
+        { &hf_pcapng_dsb_secrets_type,
+            { "Secrets Type",                              "pcapng.dsb.secrets_type",
+            FT_UINT32, BASE_HEX, VALS(dsb_secrets_types_vals), 0x00,
+            NULL, HFILL }
+        },
+        { &hf_pcapng_dsb_secrets_length,
+            { "Secrets Length",                            "pcapng.dsb.secrets_length",
+            FT_UINT32, BASE_DEC, NULL, 0x00,
+            NULL, HFILL }
+        },
+        { &hf_pcapng_dsb_secrets_data,
+            { "Secrets Data",                              "pcapng.dsb.secrets_data",
+            FT_BYTES, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_pcapng_darwin_process_id,

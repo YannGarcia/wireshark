@@ -42,13 +42,10 @@ BASIC_LIST="gcc \
 	gcc-c++ \
 	flex \
 	bison \
-	python \
 	perl \
 	lua-devel \
 	lua \
 	desktop-file-utils \
-	fop \
-	asciidoc \
 	git \
 	git-review \
 	glib2-devel \
@@ -67,10 +64,10 @@ ADDITIONAL_LIST="libnl3-devel \
 	libsmi-devel \
 	snappy-devel \
 	lz4 \
-	json-glib-devel \
 	doxygen \
 	libxml2-devel \
 	spandsp-devel \
+	systemd-devel \
 	rpm-build"
 
 # Guess which package manager we will use
@@ -109,6 +106,11 @@ add_package() {
 	# package is found, append it to list
 	eval "${list}=\"\${${list}} \${pkgname}\""
 }
+
+# python3: OpenSUSE 43.3, Fedora 26
+# python34: Centos 7
+add_package BASIC_LIST python3 || add_package BASIC_LIST python34 ||
+echo "python3 is unavailable" >&2
 
 add_package BASIC_LIST cmake3 || add_package BASIC_LIST cmake ||
 echo "cmake is unavailable" >&2

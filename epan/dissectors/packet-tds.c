@@ -2031,7 +2031,7 @@ handle_tds_sql_datetime(tvbuff_t *tvb, guint offset, proto_tree *sub_tree, tds_c
     }
 
     tv.secs = (time_t)((days * G_GUINT64_CONSTANT(86400)) + (threehndths/300) - G_GUINT64_CONSTANT(2208988800)); /* 2208988800 - seconds between Jan 1, 1900 and Jan 1, 1970 */
-    tv.nsecs = (threehndths%300) * 10000000 / 3;
+    tv.nsecs = (int)((threehndths%300) * 10000000 / 3);
     proto_tree_add_time(sub_tree, hf_tds_type_varbyte_data_absdatetime, tvb, offset, 8, &tv);
 }
 
@@ -2089,6 +2089,7 @@ dissect_tds_type_varbyte(tvbuff_t *tvb, guint *offset, packet_info *pinfo, proto
     guint length, textptrlen;
     proto_tree *sub_tree = NULL;
     proto_item *item = NULL, *length_item = NULL;
+    gint32 data_value;
 
     item = proto_tree_add_item(tree, hf, tvb, *offset, 0, ENC_NA);
     sub_tree = proto_item_add_subtree(item, ett_tds_type_varbyte);
@@ -2096,7 +2097,6 @@ dissect_tds_type_varbyte(tvbuff_t *tvb, guint *offset, packet_info *pinfo, proto
     if(fieldnum != -1)
         proto_item_append_text(item, " %i", fieldnum);
 
-    proto_item_append_text(item, " (%s)", val_to_str(data_type, tds_data_type_names, "Invalid data type: %02X"));
     if (name && strlen(name) > 0) {
         proto_item *pi;
         pi = proto_tree_add_string(sub_tree, hf_tds_type_varbyte_column_name, tvb, 0, (gint) strlen(name),
@@ -2151,15 +2151,18 @@ dissect_tds_type_varbyte(tvbuff_t *tvb, guint *offset, packet_info *pinfo, proto
             *offset += 1;
             break;
         case TDS_DATA_TYPE_INT1:            /* TinyInt (1 byte data representation) */
-            proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_int1, tvb, *offset, 1, ENC_NA);
+            proto_tree_add_item_ret_int(sub_tree, hf_tds_type_varbyte_data_int1, tvb, *offset, 1, ENC_NA, &data_value);
+            proto_item_append_text(item, " (%u)", data_value);
             *offset += 1;
             break;
         case TDS_DATA_TYPE_INT2:            /* SmallInt (2 byte data representation) */
-            proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_int2, tvb, *offset, 2, tds_get_int2_encoding(tds_info));
+            proto_tree_add_item_ret_int(sub_tree, hf_tds_type_varbyte_data_int2, tvb, *offset, 2, tds_get_int2_encoding(tds_info), &data_value);
+            proto_item_append_text(item, " (%u)", data_value);
             *offset += 2;
             break;
         case TDS_DATA_TYPE_INT4:            /* Int (4 byte data representation) */
-            proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_int4, tvb, *offset, 4, tds_get_int4_encoding(tds_info));
+            proto_tree_add_item_ret_int(sub_tree, hf_tds_type_varbyte_data_int4, tvb, *offset, 4, tds_get_int4_encoding(tds_info), &data_value);
+            proto_item_append_text(item, " (%u)", data_value);
             *offset += 4;
             break;
         case TDS_DATA_TYPE_INT8:            /* BigInt (8 byte data representation) */
@@ -2233,16 +2236,20 @@ dissect_tds_type_varbyte(tvbuff_t *tvb, guint *offset, packet_info *pinfo, proto
                     proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_null, tvb, *offset, 0, ENC_NA);
                     break;
                 case 1:
-                    proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_int1, tvb, *offset + 1, 1, ENC_NA);
+                    proto_tree_add_item_ret_uint(sub_tree, hf_tds_type_varbyte_data_int1, tvb, *offset + 1, 1, ENC_NA, &data_value);
+                    proto_item_append_text(item, " (%u)", data_value);
                     break;
                 case 2:
-                    proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_int2, tvb, *offset + 1, 2, tds_get_int2_encoding(tds_info));
+                    proto_tree_add_item_ret_int(sub_tree, hf_tds_type_varbyte_data_int2, tvb, *offset + 1, 2, tds_get_int2_encoding(tds_info), &data_value);
+                    proto_item_append_text(item, " (%u)", data_value);
                     break;
                 case 4:
-                    proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_int4, tvb, *offset + 1, 4, tds_get_int4_encoding(tds_info));
+                    proto_tree_add_item_ret_int(sub_tree, hf_tds_type_varbyte_data_int4, tvb, *offset + 1, 4, tds_get_int4_encoding(tds_info), &data_value);
+                    proto_item_append_text(item, " (%u)", data_value);
                     break;
                 case 8:
                     proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_int8, tvb, *offset + 1, 8, ENC_LITTLE_ENDIAN);
+                    proto_item_append_text(item, " (%"G_GINT64_MODIFIER"u)", tvb_get_letoh64(tvb, *offset));
                     break;
                 default:
                     expert_add_info(pinfo, length_item, &ei_tds_invalid_length);
@@ -2259,9 +2266,11 @@ dissect_tds_type_varbyte(tvbuff_t *tvb, guint *offset, packet_info *pinfo, proto
                     break;
                 case 4:
                     proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_float, tvb, *offset + 1, 4, ENC_LITTLE_ENDIAN);
+                    proto_item_append_text(item, " (%f)", tvb_get_letohieee_float(tvb, *offset));
                     break;
                 case 8:
                     proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_double, tvb, *offset + 1, 8, ENC_LITTLE_ENDIAN);
+                    proto_item_append_text(item, " (%f)", tvb_get_letohieee_double(tvb, *offset));
                     break;
                 default:
                     expert_add_info(pinfo, length_item, &ei_tds_invalid_length);
@@ -2537,6 +2546,7 @@ dissect_tds_type_varbyte(tvbuff_t *tvb, guint *offset, packet_info *pinfo, proto
                 proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_null, tvb, *offset, 0, ENC_NA);
             }
             else {
+                const guint8 *strval = NULL;
                 switch(data_type) {
                     case TDS_DATA_TYPE_BIGVARBIN: /* VarBinary */
                     case TDS_DATA_TYPE_BIGBINARY: /* Binary */
@@ -2544,11 +2554,21 @@ dissect_tds_type_varbyte(tvbuff_t *tvb, guint *offset, packet_info *pinfo, proto
                         break;
                     case TDS_DATA_TYPE_BIGVARCHR: /* VarChar */
                     case TDS_DATA_TYPE_BIGCHAR:   /* Char */
-                        proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_string, tvb, *offset, length, ENC_ASCII|ENC_NA);
+                        proto_tree_add_item_ret_string(sub_tree, hf_tds_type_varbyte_data_string,
+                            tvb, *offset, length, ENC_ASCII|ENC_NA,
+                            wmem_packet_scope(), &strval);
+                        if (strval) {
+                            proto_item_append_text(item, " (%s)", strval);
+                        }
                         break;
                     case TDS_DATA_TYPE_NVARCHAR:  /* NVarChar */
                     case TDS_DATA_TYPE_NCHAR:     /* NChar */
-                        proto_tree_add_item(sub_tree, hf_tds_type_varbyte_data_string, tvb, *offset, length, ENC_UTF_16|ENC_LITTLE_ENDIAN);
+                        proto_tree_add_item_ret_string(sub_tree, hf_tds_type_varbyte_data_string,
+                            tvb, *offset, length, ENC_UTF_16|ENC_LITTLE_ENDIAN,
+                            wmem_packet_scope(), &strval);
+                        if (strval) {
+                            proto_item_append_text(item, " (%s)", strval);
+                        }
                         break;
                 }
                 *offset += length;
@@ -4216,7 +4236,6 @@ static void
 dissect_tds7_login(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, tds_conv_info_t *tds_info)
 {
     guint offset, i, j, k, offset2, len, login_hf = 0;
-    char *val, *val2;
 
     proto_tree *login_tree;
     proto_tree *header_tree;
@@ -4316,18 +4335,25 @@ dissect_tds7_login(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, tds_conv
             if( i != 2) {
                 /* tds 7 is always unicode */
                 len *= 2;
-                proto_tree_add_item(login_tree, login_hf, tvb, offset2, len, ENC_UTF_16|ENC_LITTLE_ENDIAN);
+                proto_tree_add_item(login_tree, login_hf, tvb, offset2, len,
+                    ENC_UTF_16|ENC_LITTLE_ENDIAN);
             } else {
-                /* This field is the password.  We retrieve it from the packet
+                /* This field is the password.  It is an obfusticated Unicode
+                 * string. This code assumes that the password is composed of
+                 * the 8-bit subset of UCS-16. Retrieve it from the packet
                  * as a non-unicode string and then perform two operations on it
                  * to "decrypt" it.  Finally, we create a new string that consists
                  * of ASCII characters instead of unicode by skipping every other
                  * byte in the original string.
+                 *
+                 * Optionally, we could make an expert item to warn of non-ASCII
+                 * characters in the string.
                  */
 
+                guchar *val, *val2;
                 len *= 2;
-                val = (gchar*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset2, len, ENC_ASCII);
-                val2 = (char *)wmem_alloc(wmem_packet_scope(), len/2+1);
+                val  = (guchar *)tvb_memdup(wmem_packet_scope(), tvb, offset2, len);
+                val2 = (guchar *)wmem_alloc(wmem_packet_scope(), len/2+1);
 
                 for(j = 0, k = 0; j < len; j += 2, k++) {
                     val[j] ^= 0xA5;
@@ -5373,46 +5399,52 @@ dissect_tds_error_token(tvbuff_t *tvb, guint offset, proto_tree *tree, tds_conv_
     guint cur = offset;
     guint32 msg_len;
     guint32 srvr_len, proc_len;
-    int encoding = tds_little_endian ? ENC_LITTLE_ENDIAN : ENC_BIG_ENDIAN;
 
-    proto_tree_add_item(tree, hf_tds_error_length, tvb, cur, 2, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_tds_error_length, tvb, cur, 2, tds_get_int2_encoding(tds_info));
     cur += 2;
 
-    proto_tree_add_item(tree, hf_tds_error_number, tvb, cur, 4, encoding);
+    proto_tree_add_item(tree, hf_tds_error_number, tvb, cur, 4, tds_get_int4_encoding(tds_info));
     cur += 4;
     proto_tree_add_item(tree, hf_tds_error_state, tvb, cur, 1, ENC_NA);
     cur +=1;
     proto_tree_add_item(tree, hf_tds_error_class, tvb, cur, 1, ENC_NA);
     cur +=1;
 
-    proto_tree_add_item_ret_uint(tree, hf_tds_error_msgtext_length, tvb, cur, 2, encoding, &msg_len);
+    proto_tree_add_item_ret_uint(tree, hf_tds_error_msgtext_length, tvb, cur, 2,
+        tds_get_int2_encoding(tds_info), &msg_len);
     cur +=2;
 
-    msg_len *= 2;
-    proto_tree_add_item(tree, hf_tds_error_msgtext, tvb, cur, msg_len, ENC_UTF_16|ENC_LITTLE_ENDIAN);
+    if (tds_char_encoding_is_two_byte(tds_info)) {
+        msg_len *= 2;
+    }
+    proto_tree_add_item(tree, hf_tds_error_msgtext, tvb, cur, msg_len, tds_get_char_encoding(tds_info));
     cur += msg_len;
 
     proto_tree_add_item_ret_uint(tree, hf_tds_error_servername_length, tvb, cur, 1, ENC_NA, &srvr_len);
     cur +=1;
     if(srvr_len) {
-        srvr_len *=2;
-        proto_tree_add_item(tree, hf_tds_error_servername, tvb, cur, srvr_len, ENC_UTF_16|ENC_LITTLE_ENDIAN);
+        if (tds_char_encoding_is_two_byte(tds_info)) {
+            srvr_len *=2;
+        }
+        proto_tree_add_item(tree, hf_tds_error_servername, tvb, cur, srvr_len, tds_get_char_encoding(tds_info));
         cur += srvr_len;
     }
 
     proto_tree_add_item_ret_uint(tree, hf_tds_error_procname_length, tvb, cur, 1, ENC_NA, &proc_len);
     cur +=1;
     if(proc_len) {
-        proc_len *=2;
-        proto_tree_add_item(tree, hf_tds_error_procname, tvb, cur, proc_len, ENC_UTF_16|ENC_LITTLE_ENDIAN);
+        if (tds_char_encoding_is_two_byte(tds_info)) {
+            proc_len *=2;
+        }
+        proto_tree_add_item(tree, hf_tds_error_procname, tvb, cur, proc_len, tds_get_char_encoding(tds_info));
         cur += proc_len;
     }
 
     if (TDS_PROTO_TDS7_1_OR_LESS(tds_info)) {
-        proto_tree_add_item(tree, hf_tds_error_linenumber_16, tvb, cur, 2, encoding);
+        proto_tree_add_item(tree, hf_tds_error_linenumber_16, tvb, cur, 2, tds_get_int2_encoding(tds_info));
         cur += 2;
     } else {
-        proto_tree_add_item(tree, hf_tds_error_linenumber_32, tvb, cur, 4, encoding);
+        proto_tree_add_item(tree, hf_tds_error_linenumber_32, tvb, cur, 4, tds_get_int4_encoding(tds_info));
         cur += 4;
     }
 
@@ -6405,6 +6437,9 @@ dissect_tds_resp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, tds_conv_i
                     break;
                 case TDS_CONTROL_TOKEN:
                     token_sz = dissect_tds_control_token(token_tree, tvb, pos + 1, tds_info, &nl_data) + 1;
+                    break;
+                case TDS_ERR_TOKEN:
+                    token_sz = dissect_tds_error_token(tvb, pos + 1, token_tree, tds_info) + 1;
                     break;
                 case TDS_INFO_TOKEN:
                     token_sz = dissect_tds_info_token(tvb, pos + 1, token_tree, tds_info) + 1;

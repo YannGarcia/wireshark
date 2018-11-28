@@ -19,10 +19,6 @@
 #define VERSION_RELEASE "${PROJECT_RELEASE_VERSION}"
 #define VERSION_FLAVOR "${VERSION_FLAVOR}"
 
-/* FIXME: Move the path stuff to the CMakeInstallDirs.cmake file */
-/* Directory for data */
-#define DATAFILE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/${CPACK_PACKAGE_NAME}"
-
 /* Build wsutil with SIMD optimization */
 #cmakedefine HAVE_SSE4_2 1
 
@@ -70,9 +66,6 @@
 
 /* Define if LIBSSH support is enabled */
 #cmakedefine HAVE_LIBSSH 1
-
-/* Define if JSONGLIB support is enabled */
-#cmakedefine HAVE_JSONGLIB 1
 
 /* Define if LIBSSH has ssh_userauth_agent() function */
 #cmakedefine HAVE_SSH_USERAUTH_AGENT 1

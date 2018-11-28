@@ -362,6 +362,8 @@ static int hf_gtpv2_mm_context_higher_br_16mb_flg_len = -1;
 static int hf_gtpv2_mm_context_higher_br_16mb_flg = -1;
 static int hf_gtpv2_vdp_length = -1;
 static int hf_gtpv2_mm_context_paging_len = -1;
+static int hf_gtpv2_mm_context_ex_access_res_data_len = -1;
+static int hf_gtpv2_mm_context_ue_add_sec_cap_len = -1;
 static int hf_gtpv2_uci_csg_id = -1;
 static int hf_gtpv2_uci_csg_id_spare = -1;
 static int hf_gtpv2_uci_access_mode = -1;
@@ -383,6 +385,9 @@ static int hf_gtpv2_mm_context_nr_qui = -1;
 static int hf_gtpv2_mm_context_nr_qua = -1;
 static int hf_gtpv2_mm_context_uamb_ri = -1;
 static int hf_gtpv2_mm_context_osci = -1;
+static int hf_gtpv2_mm_context_ussrna = -1;
+static int hf_gtpv2_mm_context_nrsrna = -1;
+
 static int hf_gtpv2_mm_context_samb_ri = -1;
 static int hf_gtpv2_mm_context_unipa = -1;
 static int hf_gtpv2_mm_context_unc = -1;
@@ -497,6 +502,7 @@ static int hf_gtpv2_iksrvcc = -1;
 static int hf_gtpv2_nsapi08 = -1;
 static int hf_gtpv2_voice_domain_and_ue_usage_setting = -1;
 static int hf_gtpv2_ue_radio_capability_for_paging_information = -1;
+static int hf_gtpv2_ue_additional_security_cap = -1;
 static int hf_gtpv2_upd_source_port_number = -1;
 static int hf_gtpv2_uplink_used_ue_ambr = -1;
 static int hf_gtpv2_tmsi_bytes = -1;
@@ -1028,10 +1034,8 @@ static gint ett_gtpv2_ies[NUM_GTPV2_IES];
 192    Remote User ID
 193    Remote UE IP information
 */
-#define GTPV2_IE_CIOT_OPT_SUPPORT_IND   194
-/*
-195    SCEF PDN Connection
-*/
+#define GTPV2_IE_CIOT_OPT_SUPPORT_IND       194
+#define GTPV2_IE_SCEF_PDN_CONNECTION        195
 #define GTPV2_IE_HEADER_COMP_CONF           196
 #define GTPV2_IE_EXTENDED_PCO               197
 #define GTPV2_IE_SERV_PLMN_RATE_CONTROL     198
@@ -2381,6 +2385,8 @@ static const value_string gtpv2_rat_type_vals[] = {
     {6, "EUTRAN"},
     {7, "Virtual"},
     {8, "EUTRAN-NB-IoT"},
+    {9, "LTE-M"},
+    {10, "NR"},
     {0, NULL}
 };
 static value_string_ext gtpv2_rat_type_vals_ext = VALUE_STRING_EXT_INIT(gtpv2_rat_type_vals);
@@ -4200,7 +4206,7 @@ dissect_gtpv2_mm_context_eps_qq(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     proto_tree *flag_tree, *qua_tree, *qui_tree;
     gint        offset;
     guint8      tmp, nhi, drxi, nr_qua, nr_qui, uamb_ri, osci, samb_ri, vdp_len;
-    guint32     dword, paging_len;
+    guint32     dword, paging_len, ue_add_sec_cap_len, bit_offset, ex_access_res_data_len;
 
     offset = 0;
 
@@ -4364,9 +4370,43 @@ dissect_gtpv2_mm_context_eps_qq(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     proto_tree_add_item_ret_uint(tree, hf_gtpv2_mm_context_paging_len, tvb, offset, 2, ENC_BIG_ENDIAN, &paging_len);
     offset += 2;
 
-    if (paging_len) {
+    if (paging_len > 0) {
         proto_tree_add_item(tree, hf_gtpv2_ue_radio_capability_for_paging_information, tvb, offset, paging_len, ENC_NA);
         offset +=paging_len;
+    }
+
+    if (offset == (gint)length) {
+        return;
+    }
+
+    /*(u+1) Length of Extended Access Restriction Data */
+    proto_tree_add_item_ret_uint(tree, hf_gtpv2_mm_context_ex_access_res_data_len, tvb, offset, 1, ENC_BIG_ENDIAN, &ex_access_res_data_len);
+    offset += 1;
+
+    /*(u+2) to v
+     *8      7     6     5     4      3      2      1
+     *            spare               |    USSRNA | NRSRNA
+     */
+    if(ex_access_res_data_len > 0){
+        bit_offset = offset << 3;
+        proto_tree_add_bits_item(tree, hf_gtpv2_spare_bits, tvb, bit_offset, 6, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tree, hf_gtpv2_mm_context_ussrna, tvb, offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tree, hf_gtpv2_mm_context_nrsrna, tvb, offset, 1, ENC_BIG_ENDIAN);
+        offset += 1;
+    }
+
+    if (offset == (gint)length) {
+        return;
+    }
+
+    /*(v+1) Length of UE additional security capability*/
+    proto_tree_add_item_ret_uint(tree, hf_gtpv2_mm_context_ue_add_sec_cap_len, tvb, offset, 1, ENC_BIG_ENDIAN, &ue_add_sec_cap_len);
+    offset += 1;
+
+    /*(v+2) to y UE additional security capability*/
+    if(ue_add_sec_cap_len > 0){
+        proto_tree_add_item(tree, hf_gtpv2_ue_additional_security_cap, tvb, offset, ue_add_sec_cap_len, ENC_NA);
+        offset +=ue_add_sec_cap_len;
     }
 
     if (offset < (gint)length){
@@ -6863,11 +6903,27 @@ dissect_gtpv2_ciot_opt_support_ind(tvbuff_t *tvb, packet_info *pinfo, proto_tree
 }
 
 /*
+ * 8.126 SCEF PDN Connection
+ */
+static void
+dissect_gtpv2_scef_pdn_connection(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree  _U_, proto_item *item, guint16 length, guint8 message_type _U_, guint8 instance _U_, session_args_t * args)
+{
+   int         offset = 0;
+   proto_tree *grouped_tree;
+   tvbuff_t   *new_tvb;
+
+   proto_item_append_text(item, "[Grouped IE]");
+   grouped_tree = proto_item_add_subtree(item, ett_gtpv2_PDN_conn);
+   new_tvb = tvb_new_subset_length(tvb, offset, length);
+
+   dissect_gtpv2_ie_common(new_tvb, pinfo, grouped_tree, offset, message_type, args);
+
+}
+
+
+/*
  * 8.127 Header Compression Configuration
  */
-
-
-
 static void
 dissect_gtpv2_header_comp_comf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, proto_item *item _U_, guint16 length _U_, guint8 message_type _U_, guint8 instance _U_, session_args_t * args _U_)
 {
@@ -7168,7 +7224,7 @@ static const gtpv2_ie_t gtpv2_ies[] = {
                                                                              /* 192, 8.123 Remote User ID */
                                                                              /* 193, 8.124 Remote UE IP Information */
     {GTPV2_IE_CIOT_OPT_SUPPORT_IND, dissect_gtpv2_ciot_opt_support_ind},     /* 194, 8.125 CIoT Optimizations Support Indication */
-                                                                             /* 195, 8.126 SCEF PDN Connection */
+    {GTPV2_IE_SCEF_PDN_CONNECTION , dissect_gtpv2_scef_pdn_connection },     /* 195, 8.126 SCEF PDN Connection */
     {GTPV2_IE_HEADER_COMP_CONF, dissect_gtpv2_header_comp_comf},             /* 196, 8.127 Header Compression Configuration */
     {GTPV2_IE_EXTENDED_PCO, dissect_gtpv2_pco},                              /* 197, 8.128 Extended Protocol Configuration Options (ePCO) */
     {GTPV2_IE_SERV_PLMN_RATE_CONTROL, dissect_gtpv2_serv_plmn_rate_control}, /* 198, 8.129 Serving PLMN Rate Control */
@@ -9110,6 +9166,16 @@ void proto_register_gtpv2(void)
             FT_UINT16, BASE_DEC, NULL, 0x0,
             NULL, HFILL }
         },
+        { &hf_gtpv2_mm_context_ex_access_res_data_len,
+        { "Length of Extended Access Restriction Data", "gtpv2.mm_context_ex_access_res_data_len",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL }
+        },
+        { &hf_gtpv2_mm_context_ue_add_sec_cap_len,
+        { "Length of UE additional security capability", "gtpv2.mm_context_ue_add_sec_cap_len",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL }
+        },
         { &hf_gtpv2_una,
           { "UTRAN", "gtpv2.mm_context.una",
             FT_BOOLEAN, 8, TFS(&tfs_not_allowed_allowed), 0x01,
@@ -9170,6 +9236,16 @@ void proto_register_gtpv2(void)
           {"OSCI", "gtpv2.mm_context_osci",
            FT_BOOLEAN, 8, NULL, 0x01,
            "Old Security Context Indicator", HFILL}
+        },
+        { &hf_gtpv2_mm_context_ussrna,
+          {"USSRNA", "gtpv2.mm_context_ussrna",
+           FT_UINT8, BASE_DEC, NULL, 0x02,
+           NULL, HFILL}
+        },
+        { &hf_gtpv2_mm_context_nrsrna,
+          {"NRSRNA", "gtpv2.mm_context_nrsrna",
+           FT_UINT8, BASE_DEC, NULL, 0x01,
+           NULL, HFILL}
         },
         { &hf_gtpv2_mm_context_samb_ri,
           {"SAMB RI", "gtpv2.mm_context_samb_ri",
@@ -9809,6 +9885,7 @@ void proto_register_gtpv2(void)
       { &hf_gtpv2_downlink_used_ue_ambr, { "Downlink Used UE AMBR", "gtpv2.downlink_used_ue_ambr", FT_UINT32, BASE_DEC|BASE_UNIT_STRING, &units_kbps, 0x0, NULL, HFILL }},
       { &hf_gtpv2_voice_domain_and_ue_usage_setting, { "Voice Domain Preference and UE's Usage Setting", "gtpv2.voice_domain_and_ue_usage_setting", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_gtpv2_ue_radio_capability_for_paging_information,{ "UE Radio Capability for Paging information", "gtpv2.UE_Radio_Capability_for_Paging_information", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL } },
+      { &hf_gtpv2_ue_additional_security_cap,{ "UE additional security capability", "gtpv2.ue_additional_security_cap", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL } },
       { &hf_gtpv2_authentication_quadruplets, { "Authentication Quadruplets", "gtpv2.authentication_quadruplets", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
       { &hf_gtpv2_authentication_quintuplets, { "Authentication Quintuplets", "gtpv2.authentication_quintuplets", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
       { &hf_gtpv2_mm_context_nh, { "NH (Next Hop)", "gtpv2.mm_context_nh", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},

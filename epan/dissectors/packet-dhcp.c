@@ -913,7 +913,8 @@ static const enum_val_t dhcp_uuid_endian_vals[] = {
 	{ NULL, NULL, 0 }
 };
 
-#define DHCP_UDP_PORT_RANGE  "67-68"
+#define DHCP_UDP_PORT_RANGE  "67-68,4011"
+#define PROXYDHCP_UDP_PORT   4011
 
 #define BOOTP_BC	0x8000
 #define BOOTP_MBZ	0x7FFF
@@ -1121,8 +1122,8 @@ static const value_string dhcp_nbnt_vals[] = {
  *    EFI Byte Code (EFI BC, EBC) was 7 in RFC 4578, but is assigned 9 by IETF.
  *    EFI x64 was 9 in RFC 4578, but is assigned 7 by IETF.
  *
- * For confirmation, refer to RFC erratum 4625:
- *    https://www.rfc-editor.org/errata/eid4625
+ * For confirmation, refer to RFC erratum 4624:
+ *    https://www.rfc-editor.org/errata/eid4624
  */
 static const value_string dhcp_client_arch[] = {
 	{ 0x0000, "IA x86 PC" },
@@ -1664,6 +1665,9 @@ dhcp_handle_basic_types(packet_info *pinfo, proto_tree *tree, proto_item *item, 
 			proto_tree_add_item(tree, *hf, tvb, offset, 4, ENC_BIG_ENDIAN);
 		else if (hf_default->ipv4 != NULL)
 			proto_tree_add_item(tree, *hf_default->ipv4, tvb, offset, 4, ENC_BIG_ENDIAN);
+
+		/* Show IP address in root of option */
+		proto_item_append_text(tree, " (%s)", tvb_ip_to_str(tvb, offset));
 		consumed = 4;
 		break;
 
@@ -5250,7 +5254,7 @@ dissect_packetcable_mta_cap(proto_tree *v_tree, packet_info *pinfo, tvbuff_t *tv
 						};
 
 						proto_tree_add_bitmask_list_value(subtree2, tvb, subopt_off, 2, cl_flags, mib_val);
-                        }
+						}
 						break;
 
 					case PKT_MDC_MIB_IETF: {
@@ -5263,7 +5267,7 @@ dissect_packetcable_mta_cap(proto_tree *v_tree, packet_info *pinfo, tvbuff_t *tv
 						};
 
 						proto_tree_add_bitmask_list_value(subtree2, tvb, subopt_off, 2, ietf_flags, mib_val);
-                        }
+						}
 						break;
 
 					case PKT_MDC_MIB_EURO: {
@@ -5279,7 +5283,7 @@ dissect_packetcable_mta_cap(proto_tree *v_tree, packet_info *pinfo, tvbuff_t *tv
 						};
 
 						proto_tree_add_bitmask_list_value(subtree2, tvb, subopt_off, 2, euro_flags, mib_val);
-                        }
+						}
 						break;
 
 					default:
@@ -6348,6 +6352,7 @@ dissect_dhcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 	int	      voff, eoff, tmpvoff; /* vendor offset, end offset */
 	guint32	      ip_addr;
 	gboolean      at_end;
+	gboolean      isProxyDhcp;
 	const char   *dhcp_type				     = NULL;
 	const guint8 *vendor_class_id			     = NULL;
 	guint16	      flags, secs;
@@ -6363,6 +6368,19 @@ dissect_dhcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 	rfc3396_dns_domain_search_list.tvb_composite	     = NULL;
 	rfc3396_sip_server.total_number_of_block	     = 0;
 	rfc3396_sip_server.tvb_composite		     = NULL;
+
+	if (pinfo->srcport == PROXYDHCP_UDP_PORT ||
+	    pinfo->destport == PROXYDHCP_UDP_PORT) {
+		/* The "DHCP magic" is mandatory for proxyDHCP. Use it as a heuristic. */
+		if (!tvb_bytes_exist(tvb, VENDOR_INFO_OFFSET, 4) ||
+		    tvb_get_ntohl(tvb, VENDOR_INFO_OFFSET) != 0x63825363) {
+         /* Not a DHCP packet at all. */
+			return 0;
+		}
+		isProxyDhcp = TRUE;
+	} else {
+		isProxyDhcp = FALSE;
+	}
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "BOOTP");
 	/*
@@ -6441,8 +6459,8 @@ dissect_dhcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 		 */
 		col_set_str(pinfo->cinfo, COL_PROTOCOL, "DHCP");
 
-		col_add_fstr(pinfo->cinfo, COL_INFO, "DHCP %-8s - Transaction ID 0x%x",
-			     dhcp_type, tvb_get_ntohl(tvb, 4));
+		col_add_fstr(pinfo->cinfo, COL_INFO, "%sDHCP %-8s - Transaction ID 0x%x",
+			     isProxyDhcp ? "proxy" : "", dhcp_type, tvb_get_ntohl(tvb, 4));
 		tap_queue_packet( dhcp_bootp_tap, pinfo, dhcp_type);
 	}
 
@@ -9299,7 +9317,7 @@ proto_register_dhcp(void)
 
 	proto_dhcp = proto_register_protocol("Dynamic Host Configuration Protocol", "DHCP/BOOTP", "dhcp");
 	proto_register_field_array(proto_dhcp, hf, array_length(hf));
-    proto_register_alias(proto_dhcp, "bootp");
+	proto_register_alias(proto_dhcp, "bootp");
 	proto_register_subtree_array(ett, array_length(ett));
 	dhcp_bootp_tap = register_tap("dhcp");
 

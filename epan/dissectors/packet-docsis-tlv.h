@@ -57,7 +57,8 @@
 #define TLV_ENABLE_TEST_MODES 40
 #define TLV_DS_CH_LIST 41
 #define TLV_MC_MAC_ADDRESS 42
-#define TLV_VENDOR_SPEC 43 /* Vendor Specific is actually 44 ? */
+#define TLV_DOCSIS_EXTENSION_FIELD 43
+#define TLV_VENDOR_SPEC 44
 #define TLV_DUT_FILTER 45
 #define TLV_TCC 46
 #define TLV_SID_CL 47
@@ -80,6 +81,8 @@
 #define TLV_CMTS_MC_SESS_ENC 64
 #define TLV_L2VPN_MAC_AGING 65
 #define TLV_MGMT_EVENT_CTRL 66
+#define TLV_EM_MODE_INDICATOR 75
+#define TLV_EM_ID_LIST_FOR_CM 78
 #define TLV_END 255
 
 /* Define DOCSIS 1.0 Class Of Service Configuration Types
@@ -228,6 +231,7 @@
 #define SFW_MIN_RSVD_PACKETSIZE 11
 #define SFW_ACTIVE_QOS_TIMEOUT 12
 #define SFW_ADMITT_QOS_TIMEOUT 13
+#define SFW_PEAK_TRAFFIC_RATE 27
 #define SFW_REQUIRED_ATTRIBUTE_MASK 31
 #define SFW_FORBIDDEN_ATTRIBUTE_MASK 32
 #define SFW_ATTRIBUTE_AGGREGATION_RULE_MASK 33
@@ -324,6 +328,8 @@
 #define TLV_TCC_INIT_TECH 7
 #define TLV_TCC_RNG_PARMS 8
 #define TLV_TCC_DYN_RNG_WIN 9
+#define TLV_TCC_P1_6HI 10
+#define TLV_TCC_ASSIGN_OFDMA_UP_DATA_PROF 11
 #define TLV_TCC_ERR 254
 
 /* Define TLV_TCC_RNG_PARMS sub-types
@@ -380,6 +386,22 @@
 #define TLV_RCP_RCV_CH 5
 #define TLV_RCP_VEN_SPEC 43
 #define TLV_RCC_ERR 254
+
+/* Define TLV_RCC sub-types
+ * These are subtypes of TLV_RCP (49), and not common with TLV_RCP (48)
+ */
+#define TLV_RCC_SRCC 7
+
+/* Define TLV_RCC_SRCC sub-types (49.7)
+ */
+#define RCC_SRCC_PRIM_DS_CHAN_ASSIGN 1
+#define RCC_SRCC_DS_CHAN_ASSIGN 2
+#define RCC_SRCC_DS_PROF_ASSIGN 3
+
+/* Define TLV_RCC_SRCC_DS_PROF_ASSIGN sub-types (49.7.3)
+ */
+#define RCC_SRCC_DS_PROF_ASSIGN_DCID 1
+#define RCC_SRCC_DS_PROF_ASSIGN_PROF_LIST 2
 
 /* Define TLV_RCP_RCV_MOD_ENC sub-types
  * These are subtypes of TLV_RCP_RCV_MOD_ENC (48.4)

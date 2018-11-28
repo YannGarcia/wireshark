@@ -42,7 +42,8 @@ do
 	fi
 done
 
-BASIC_LIST="qttools5-dev \
+BASIC_LIST="libglib2.0-dev \
+	qttools5-dev \
 	qttools5-dev-tools \
 	libqt5svg5-dev \
 	qtmultimedia5-dev \
@@ -51,7 +52,7 @@ BASIC_LIST="qttools5-dev \
 	bison \
 	flex \
 	make \
-	python \
+	python3 \
 	perl \
 	libgcrypt-dev"
 
@@ -70,14 +71,13 @@ ADDITIONAL_LIST="libnl-3-dev \
 	libspandsp-dev \
 	libxml2-dev \
 	git \
-	libjson-glib-dev \
 	ninja-build \
 	doxygen \
 	xsltproc"
 
 DEBDEPS_LIST="debhelper \
 	po-debconf \
-	python-ply \
+	python3-ply \
 	docbook-xsl \
 	docbook-xml \
 	libxml2-utils \
@@ -127,6 +127,12 @@ echo "libgnutls28-dev and libgnutls-dev are unavailable" >&2
 # mmdbresolve
 add_package ADDITIONAL_LIST libmaxminddb-dev ||
 echo "libmaxminddb-dev is unavailable" >&2
+
+# libsystemd-journal-dev: Ubuntu 14.04
+# libsystemd-dev: Ubuntu >= 16.04
+add_package DEBDEPS_LIST libsystemd-dev ||
+add_package DEBDEPS_LIST libsystemd-journal-dev ||
+echo "libsystemd-dev is unavailable"
 
 ACTUAL_LIST=$BASIC_LIST
 

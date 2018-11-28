@@ -15,9 +15,9 @@
  * See RFC 4347 for details about DTLS specs.
  *
  * Notes :
- * This dissector is based on the TLS dissector (packet-ssl.c); Because of the similarity
+ * This dissector is based on the TLS dissector (packet-tls.c); Because of the similarity
  *   of DTLS and TLS, decryption works like TLS with RSA key exchange.
- * This dissector uses the sames things (file, libraries) as the SSL dissector (gnutls, packet-ssl-utils.h)
+ * This dissector uses the sames things (file, libraries) as the TLS dissector (gnutls, packet-tls-utils.h)
  *  to make it easily maintainable.
  *
  * It was developed to dissect and decrypt the OpenSSL v 0.9.8f DTLS implementation.
@@ -30,7 +30,7 @@
  * Todo :
  *  - activate correct Mac calculation when openssl will be corrected
  *    (or if an other implementation works),
- *    corrected code is ready and commented in packet-ssl-utils.h file.
+ *    corrected code is ready and commented in packet-tls-utils.h file.
  *  - add missing things (desegmentation, reordering... that aren't present in actual OpenSSL implementation)
  */
 
@@ -50,7 +50,7 @@
 #include <wsutil/strtoi.h>
 #include <wsutil/utf8_entities.h>
 #include <wsutil/rsa.h>
-#include "packet-ssl-utils.h"
+#include "packet-tls-utils.h"
 #include "packet-dtls.h"
 
 void proto_register_dtls(void);
@@ -1354,6 +1354,7 @@ dissect_dtls_handshake(tvbuff_t *tvb, packet_info *pinfo,
           case SSL_HND_KEY_UPDATE:
           case SSL_HND_ENCRYPTED_EXTS:
           case SSL_HND_END_OF_EARLY_DATA: /* TLS 1.3 */
+          case SSL_HND_COMPRESSED_CERTIFICATE:
           case SSL_HND_ENCRYPTED_EXTENSIONS: /* TLS 1.3 */
             /* TODO: does this need further dissection? */
             break;
@@ -1936,7 +1937,7 @@ proto_register_dtls(void)
 
   dtls_associations = register_dissector_table("dtls.port", "DTLS Port", proto_dtls, FT_UINT16, BASE_DEC);
 
-  ssl_common_register_dtls_alpn_dissector_table("dtls.handshake.extensions_alpn_str",
+  ssl_common_register_dtls_alpn_dissector_table("dtls.alpn",
         "DTLS Application-Layer Protocol Negotiation (ALPN) Protocol IDs",
         proto_dtls);
 

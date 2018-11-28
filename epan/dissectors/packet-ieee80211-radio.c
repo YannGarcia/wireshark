@@ -72,9 +72,12 @@ static int hf_wlan_radio_channel = -1;
 static int hf_wlan_radio_frequency = -1;
 static int hf_wlan_radio_short_preamble = -1;
 static int hf_wlan_radio_signal_percent = -1;
+static int hf_wlan_radio_signal_db = -1;
 static int hf_wlan_radio_signal_dbm = -1;
 static int hf_wlan_radio_noise_percent = -1;
+static int hf_wlan_radio_noise_db = -1;
 static int hf_wlan_radio_noise_dbm = -1;
+static int hf_wlan_radio_snr = -1;
 static int hf_wlan_radio_timestamp = -1;
 static int hf_wlan_last_part_of_a_mpdu = -1;
 static int hf_wlan_a_mpdu_delim_crc_error = -1;
@@ -94,6 +97,7 @@ static expert_field ei_wlan_radio_assumed_no_stbc = EI_INIT;
 static expert_field ei_wlan_radio_assumed_no_extension_streams = EI_INIT;
 static expert_field ei_wlan_radio_assumed_bcc_fec = EI_INIT;
 
+static int wlan_radio_tap = -1;
 static int wlan_radio_timeline_tap = -1;
 
 /* Settings */
@@ -478,12 +482,6 @@ dissect_wlan_radio_phdr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, 
     have_data_rate = TRUE;
   }
 
-  if (phdr->has_signal_dbm) {
-    col_add_fstr(pinfo->cinfo, COL_RSSI, "%d dBm", phdr->signal_dbm);
-  } else if (phdr->has_signal_percent) {
-    col_add_fstr(pinfo->cinfo, COL_RSSI, "%u%%", phdr->signal_percent);
-  }
-
   /* this is the first time we are looking at this frame during a
    * capture dissection, so we know the dissection is done in
    * frame order (subsequent dissections may be random access) */
@@ -863,6 +861,11 @@ dissect_wlan_radio_phdr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, 
     proto_tree_add_uint(radio_tree, hf_wlan_radio_signal_percent, tvb, 0, 0, phdr->signal_percent);
   }
 
+  if (phdr->has_signal_db) {
+    col_add_fstr(pinfo->cinfo, COL_RSSI, "%u dB", phdr->signal_db);
+    proto_tree_add_uint(radio_tree, hf_wlan_radio_signal_db, tvb, 0, 0, phdr->signal_db);
+  }
+
   if (phdr->has_signal_dbm) {
     col_add_fstr(pinfo->cinfo, COL_RSSI, "%d dBm", phdr->signal_dbm);
     proto_tree_add_int(radio_tree, hf_wlan_radio_signal_dbm, tvb, 0, 0, phdr->signal_dbm);
@@ -872,9 +875,22 @@ dissect_wlan_radio_phdr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, 
     proto_tree_add_uint(radio_tree, hf_wlan_radio_noise_percent, tvb, 0, 0, phdr->noise_percent);
   }
 
+  if (phdr->has_noise_db) {
+    proto_tree_add_uint(radio_tree, hf_wlan_radio_noise_db, tvb, 0, 0, phdr->noise_db);
+  }
+
   if (phdr->has_noise_dbm) {
     proto_tree_add_int(radio_tree, hf_wlan_radio_noise_dbm, tvb, 0, 0, phdr->noise_dbm);
   }
+
+  if (phdr->has_signal_dbm && phdr->has_noise_dbm) {
+    proto_tree_add_int(radio_tree, hf_wlan_radio_snr, tvb, 0, 0, phdr->signal_dbm - phdr->noise_dbm);
+  }
+  /*
+   * XXX - are the signal and noise in dB from a fixed reference point
+   * guaranteed to use the *same* fixed reference point?  If so, we could
+   * calculate the SNR if they're both present, too.
+   */
 
   if (phdr->has_tsf_timestamp) {
     proto_tree_add_uint64(radio_tree, hf_wlan_radio_timestamp, tvb, 0, 0, phdr->tsf_timestamp);
@@ -1135,9 +1151,14 @@ dissect_wlan_radio_phdr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, 
         wlan_radio_info->ifs = wlan_radio_info->start_tsf - previous_frame.radio_info->end_tsf;
       }
       if (tvb_captured_length(tvb) >= 4) {
+        /*
+         * Duration/ID field.
+         */
         int nav = tvb_get_letohs(tvb, 2);
-        if ((nav & 0x8000) == 0)
+        if ((nav & 0x8000) == 0) {
+          /* Duration */
           wlan_radio_info->nav = nav;
+        }
       }
       if (phdr->has_signal_dbm) {
         wlan_radio_info->rssi = phdr->signal_dbm;
@@ -1197,6 +1218,7 @@ dissect_wlan_radio_phdr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, 
   if (phdr->has_zero_length_psdu_type)
     proto_tree_add_uint(radio_tree, hf_wlan_zero_length_psdu_type, tvb, 0, 0, phdr->zero_length_psdu_type);
 
+  tap_queue_packet(wlan_radio_tap, pinfo, phdr);
   if (wlan_radio_timeline_enabled) {
     tap_queue_packet(wlan_radio_timeline_tap, pinfo, wlan_radio_info);
   }
@@ -1397,6 +1419,10 @@ void proto_register_ieee80211_radio(void)
      {"Signal strength (percentage)", "wlan_radio.signal_percentage", FT_UINT32, BASE_DEC|BASE_UNIT_STRING, &units_percent, 0,
       "Signal strength, as percentage of maximum RSSI", HFILL }},
 
+    {&hf_wlan_radio_signal_db,
+     {"Signal strength (dB)", "wlan_radio.signal_db", FT_UINT8, BASE_DEC|BASE_UNIT_STRING, &units_decibels, 0,
+      NULL, HFILL }},
+
     {&hf_wlan_radio_signal_dbm,
      {"Signal strength (dBm)", "wlan_radio.signal_dbm", FT_INT8, BASE_DEC|BASE_UNIT_STRING, &units_dbm, 0,
       NULL, HFILL }},
@@ -1405,8 +1431,16 @@ void proto_register_ieee80211_radio(void)
      {"Noise level (percentage)", "wlan_radio.noise_percentage", FT_UINT32, BASE_DEC|BASE_UNIT_STRING, &units_percent, 0,
       NULL, HFILL }},
 
+    {&hf_wlan_radio_noise_db,
+     {"Noise level (dB)", "wlan_radio.noise_db", FT_UINT8, BASE_DEC|BASE_UNIT_STRING, &units_decibels, 0,
+      NULL, HFILL }},
+
     {&hf_wlan_radio_noise_dbm,
      {"Noise level (dBm)", "wlan_radio.noise_dbm", FT_INT8, BASE_DEC|BASE_UNIT_STRING, &units_dbm, 0,
+      NULL, HFILL }},
+
+    {&hf_wlan_radio_snr,
+     {"Signal/noise ratio (dB)", "wlan_radio.snr", FT_INT32, BASE_DEC|BASE_UNIT_STRING, &units_decibels, 0,
       NULL, HFILL }},
 
     {&hf_wlan_radio_timestamp,
@@ -1529,6 +1563,7 @@ void proto_reg_handoff_ieee80211_radio(void)
   ieee80211_handle = find_dissector_add_dependency("wlan", proto_wlan_radio);
   ieee80211_noqos_handle = find_dissector_add_dependency("wlan_noqos", proto_wlan_radio);
 
+  wlan_radio_tap = register_tap("wlan_radio");
   wlan_radio_timeline_tap = register_tap("wlan_radio_timeline");
 }
 

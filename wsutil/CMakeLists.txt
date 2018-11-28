@@ -11,6 +11,7 @@ include(UseABICheck)
 
 add_definitions(-DPLUGIN_DIR=\"${CMAKE_INSTALL_PREFIX}/${PLUGIN_INSTALL_LIBDIR}\")
 add_definitions(-DEXTCAP_DIR=\"${CMAKE_INSTALL_PREFIX}/${EXTCAP_INSTALL_LIBDIR}\")
+add_definitions(-DDATAFILE_DIR=\"${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/${CPACK_PACKAGE_NAME}\")
 
 set(WSUTIL_PUBLIC_HEADERS
 	adler32.h
@@ -43,6 +44,7 @@ set(WSUTIL_PUBLIC_HEADERS
 	inet_ipv6.h
 	interface.h
 	jsmn.h
+	json_dumper.h
 	mpeg-audio.h
 	netlink.h
 	nstime.h
@@ -99,6 +101,7 @@ set(WSUTIL_COMMON_FILES
 	inet_addr.c
 	interface.c
 	jsmn.c
+	json_dumper.c
 	mpeg-audio.c
 	nstime.c
 	cpu_info.c
@@ -229,10 +232,6 @@ set(wsutil_LIBS
 	${GNUTLS_LIBRARIES}
 )
 
-IF(HAVE_JSONGLIB)
-	list(APPEND wsutil_LIBS ${JSONGLIB_LIBRARIES})
-ENDIF()
-
 IF(WIN32)
 	set(wsutil_LIBS ${wsutil_LIBS} "iphlpapi.lib" "ws2_32.lib")
 ENDIF(WIN32)
@@ -295,29 +294,20 @@ target_link_libraries(wsutil ${wsutil_LIBS})
 
 install(TARGETS wsutil
 	EXPORT WiresharkTargets
+	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-if(NOT WIN32)
-	install(FILES ${WSUTIL_PUBLIC_HEADERS}
-		DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/wsutil"
-	)
-endif()
-
-# Export build-time datadir (note: the macro "DATAFILE_DIR" is defined in
-# config.h and points to the install-time data directory, hence the different
-# name).
-set_property(SOURCE filesystem.c APPEND PROPERTY
-	COMPILE_DEFINITIONS BUILD_TIME_DATAFILE_DIR="${DATAFILE_DIR}"
+install(FILES ${WSUTIL_PUBLIC_HEADERS}
+	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/wsutil"
 )
 
 CHECKAPI(
 	NAME
 	  wsutil
 	SWITCHES
-	  -g termoutput -build
+	  --group termoutput:1 --summary-group termoutput --build
 	SOURCES
 	  ${WSUTIL_COMMON_FILES}
 )

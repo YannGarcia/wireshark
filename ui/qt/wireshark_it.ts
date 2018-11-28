@@ -1,10 +1,12 @@
-<?xml version="1.0" ?><!DOCTYPE TS><TS language="it" version="2.1">
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="it">
 <context>
     <name>Abbreviation</name>
     <message>
-        <source/>
+        <source></source>
         <comment>for &quot;not applicable&quot;</comment>
-        <translation type="unfinished"/>
+        <translation></translation>
     </message>
 </context>
 <context>
@@ -68,6 +70,22 @@
     <message>
         <source>License</source>
         <translation>Licenza</translation>
+    </message>
+    <message>
+        <source>The directory does not exist</source>
+        <translation>La cartella non esiste</translation>
+    </message>
+    <message>
+        <source>Should the directory %1 be created?</source>
+        <translation>Dovrebbe essere creata la cartella %1?</translation>
+    </message>
+    <message>
+        <source>The directory could not be created</source>
+        <translation>La cartella non può essere creata</translation>
+    </message>
+    <message>
+        <source>The directory %1 could not be created!</source>
+        <translation>La cartella %1 non può essere creata!</translation>
     </message>
     <message>
         <source>Copy</source>
@@ -745,16 +763,25 @@
     <message numerus="yes">
         <source>%1, error after %Ln packet(s)</source>
         <oldsource>%1, error after %2 packets</oldsource>
-        <translation type="vanished"><numerusform>%1, errore dopo %Ln pacchetto</numerusform><numerusform>%1, errore dopo %Ln pacchetti</numerusform></translation>
+        <translation type="vanished">
+            <numerusform>%1, errore dopo %Ln pacchetto</numerusform>
+            <numerusform>%1, errore dopo %Ln pacchetti</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%1, timed out at %Ln packet(s)</source>
         <oldsource>%1, timed out at %2 packets</oldsource>
-        <translation type="vanished"><numerusform>%1, scaduto dopo %Ln pacchetto</numerusform><numerusform>%1, scaduto dopo %Ln pacchetti</numerusform></translation>
+        <translation type="vanished">
+            <numerusform>%1, scaduto dopo %Ln pacchetto</numerusform>
+            <numerusform>%1, scaduto dopo %Ln pacchetti</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%1, %Ln packet(s)</source>
-        <translation type="vanished"><numerusform>%1, %Ln pacchetto</numerusform><numerusform>%1, %Ln pacchetti</numerusform></translation>
+        <translation type="vanished">
+            <numerusform>%1, %Ln pacchetto</numerusform>
+            <numerusform>%1, %Ln pacchetti</numerusform>
+        </translation>
     </message>
     <message>
         <source>Prepend packets</source>
@@ -831,15 +858,24 @@
     <message numerus="yes">
         <source>%1, error after %Ln data record(s)</source>
         <oldsource>%1, error after %Ln record(s)</oldsource>
-        <translation><numerusform>%1, errore dopo %Ln record di dati</numerusform><numerusform>%1, errore dopo %Ln record di dati</numerusform></translation>
+        <translation>
+            <numerusform>%1, errore dopo %Ln record di dati</numerusform>
+            <numerusform>%1, errore dopo %Ln record di dati</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%1, timed out at %Ln data record(s)</source>
-        <translation><numerusform>%1, tempo scaduto a %Ln record di dati</numerusform><numerusform>%1, tempo scaduto a %Ln record di dati</numerusform></translation>
+        <translation>
+            <numerusform>%1, tempo scaduto a %Ln record di dati</numerusform>
+            <numerusform>%1, tempo scaduto a %Ln record di dati</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%1, %Ln data record(s)</source>
-        <translation><numerusform>%1, %Ln record di dati</numerusform><numerusform>%1, %Ln record di dati</numerusform></translation>
+        <translation>
+            <numerusform>%1, %Ln record di dati</numerusform>
+            <numerusform>%1, %Ln record di dati</numerusform>
+        </translation>
     </message>
     <message>
         <source>unknown</source>
@@ -889,8 +925,16 @@
         <translation>Lunghezza</translation>
     </message>
     <message>
-        <source> (gzip compressed)</source>
-        <translation> (compresso con gzip)</translation>
+        <source>Hash (SHA256)</source>
+        <translation>Hash (SHA256)</translation>
+    </message>
+    <message>
+        <source>Hash (RIPEMD160)</source>
+        <translation>Hash (RIPEMD160)</translation>
+    </message>
+    <message>
+        <source>Hash (SHA1)</source>
+        <translation>Hash (SHA1)</translation>
     </message>
     <message>
         <source>Format</source>
@@ -1271,6 +1315,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>gigabyte</translation>
     </message>
     <message>
+        <source>Switch to the next file after the specified number of packets have been captured.</source>
+        <translation>Passa al file successivo dopo aver catturato il numero di pacchetti specificato.</translation>
+    </message>
+    <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;After capturing has switched to the next file and the given number of files has exceeded, the oldest file will be removed.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Dopo che la cattura è passata al file successivo e il numero di file prescelto è stato superato, il file più vecchio sarà rimosso.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1402,11 +1450,8 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>File multipli: non è stato fornito un nome del file di cattura! Devi specificare un nome del file se vuoi usare file multipli.</translation>
     </message>
     <message>
-        <source>Multiple files: No file limit given. You must specify a file size or interval at which is switched to the next capture file
- if you want to use multiple files.</source>
-        <oldsource>Multiple files: No file limit given. You must specify a file size or duration at which is switched to the next capture file
- if you want to use multiple files.</oldsource>
-        <translation>File multipli: non è stato fornito alcun limite di file. Devi specificare una dimensione del file o l&apos;intervallo trascorso il quale si passa al successivo file di cattura se vuoi utilizzare diversi file.</translation>
+        <source>Multiple files: No file limit given. You must specify a file size, interval, or number of packets for each file.</source>
+        <translation>File multipli: non è stato fornito alcun limite di file. Devi specificare una dimensione del file, l&apos;intervallo o il numero di pacchetti per ogni file.</translation>
     </message>
 </context>
 <context>
@@ -1452,6 +1497,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Scorrimento automatico durante la cattura</translation>
     </message>
     <message>
+        <source>Don&apos;t load interfaces on startup</source>
+        <translation>Non caricare le interfacce all&apos;avvio</translation>
+    </message>
+    <message>
         <source>Disable external capture interfaces</source>
         <translation>Disabilita le interfacce di cattura esterne</translation>
     </message>
@@ -1484,6 +1533,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Duplicate this coloring rule.</source>
         <translation>Duplica questa regola di colorazione.</translation>
+    </message>
+    <message>
+        <source>Clear all coloring rules.</source>
+        <translation>Cancella tutte le regole di colorazione.</translation>
     </message>
     <message>
         <source>Set the foreground color for this rule.</source>
@@ -1528,6 +1581,18 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Coloring Rules %1</source>
         <translation>Regole di colorazione %1</translation>
+    </message>
+    <message>
+        <source>Copy from</source>
+        <translation>Copia da</translation>
+    </message>
+    <message>
+        <source>Copy coloring rules from another profile.</source>
+        <translation>Copia regole di colorazione da un altro profilo.</translation>
+    </message>
+    <message>
+        <source>Open </source>
+        <translation>Apri </translation>
     </message>
     <message>
         <source>Double click to edit. Drag to move. Rules are processed in order until a match is found.</source>
@@ -1676,8 +1741,8 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Finestra</translation>
     </message>
     <message>
-        <source>Dissector Tables</source>
-        <translation>Tabelle decodificatori</translation>
+        <source>Conversation Hash Tables</source>
+        <translation>Tabella hash di conversazione</translation>
     </message>
 </context>
 <context>
@@ -1726,8 +1791,16 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Copia il comportamento di questa decodifica.</translation>
     </message>
     <message>
+        <source>Clear all dissection behaviors.</source>
+        <translation>Cancella tutti i comportamenti delle decodifiche.</translation>
+    </message>
+    <message>
         <source>Decode As</source>
         <translation>Decodifica come</translation>
+    </message>
+    <message>
+        <source>Open </source>
+        <translation>Apri </translation>
     </message>
 </context>
 <context>
@@ -2197,6 +2270,14 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Ricerca oggetti</translation>
     </message>
     <message>
+        <source>Text Filter:</source>
+        <translation>Filtro di testo:</translation>
+    </message>
+    <message>
+        <source>Only display entries containing this string</source>
+        <translation>Visualizza solo le voci che contengono questa stringa</translation>
+    </message>
+    <message>
         <source>Export</source>
         <translation>Esporta</translation>
     </message>
@@ -2337,7 +2418,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message numerus="yes">
         <source>%Ln File(s) in Set</source>
         <oldsource>%1 File%2 in Set</oldsource>
-        <translation><numerusform>%Ln file nel gruppo</numerusform><numerusform>%Ln file nel gruppo</numerusform></translation>
+        <translation>
+            <numerusform>%Ln file nel gruppo</numerusform>
+            <numerusform>%Ln file nel gruppo</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -2400,6 +2484,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Filtri di visualizzazione</translation>
     </message>
     <message>
+        <source>Open </source>
+        <translation>Apri </translation>
+    </message>
+    <message>
         <source>New filter</source>
         <translation>Nuovo filtro</translation>
     </message>
@@ -2459,6 +2547,25 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Invalid filter expression.</source>
         <translation>Espressioni di filtro non valida.</translation>
+    </message>
+</context>
+<context>
+    <name>FilterExpressionToolBar</name>
+    <message>
+        <source>Filter Button Preferences...</source>
+        <translation>Preferenze pulsante di filtro...</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>Modifica</translation>
+    </message>
+    <message>
+        <source>Disable</source>
+        <translation>Disabilita</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Rimuovi</translation>
     </message>
 </context>
 <context>
@@ -2668,11 +2775,17 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     </message>
     <message numerus="yes">
         <source>%Ln client pkt(s), </source>
-        <translation type="vanished"><numerusform>%Ln pacchetto client, </numerusform><numerusform>%Ln pacchetti client, </numerusform></translation>
+        <translation type="vanished">
+            <numerusform>%Ln pacchetto client, </numerusform>
+            <numerusform>%Ln pacchetti client, </numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%Ln server pkt(s), </source>
-        <translation type="vanished"><numerusform>%Ln pacchetto server, </numerusform><numerusform>%Ln pacchetti server, </numerusform></translation>
+        <translation type="vanished">
+            <numerusform>%Ln pacchetto server, </numerusform>
+            <numerusform>%Ln pacchetti server, </numerusform>
+        </translation>
     </message>
     <message>
         <source>ASCII</source>
@@ -2716,15 +2829,24 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     </message>
     <message numerus="yes">
         <source>%Ln &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;client&lt;/span&gt; pkt(s), </source>
-        <translation><numerusform>%n pacchetto &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;client&lt;/span&gt;, </numerusform><numerusform>%n pacchetti &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;client&lt;/span&gt;, </numerusform></translation>
+        <translation>
+            <numerusform>%n pacchetto &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;client&lt;/span&gt;, </numerusform>
+            <numerusform>%n pacchetti &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;client&lt;/span&gt;, </numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%Ln &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;server&lt;/span&gt; pkt(s), </source>
-        <translation><numerusform>%n pacchetto &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;server&lt;/span&gt;, </numerusform><numerusform>%n pacchetti &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;server&lt;/span&gt;, </numerusform></translation>
+        <translation>
+            <numerusform>%n pacchetto &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;server&lt;/span&gt;, </numerusform>
+            <numerusform>%n pacchetti &lt;span style=&quot;color: %1; background-color:%2&quot;&gt;server&lt;/span&gt;, </numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%Ln turn(s).</source>
-        <translation><numerusform>%n turno.</numerusform><numerusform>%n turni.</numerusform></translation>
+        <translation>
+            <numerusform>%n turno.</numerusform>
+            <numerusform>%n turni.</numerusform>
+        </translation>
     </message>
     <message>
         <source> Click to select.</source>
@@ -2780,7 +2902,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     </message>
     <message numerus="yes">
         <source>%Ln total stream(s).</source>
-        <translation><numerusform>%n flusso.</numerusform><numerusform>%n flussi totali.</numerusform></translation>
+        <translation>
+            <numerusform>%n flusso.</numerusform>
+            <numerusform>%n flussi totali.</numerusform>
+        </translation>
     </message>
     <message>
         <source>File closed.</source>
@@ -2931,10 +3056,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Length</source>
         <translation>Lunghezza</translation>
-    </message>
-    <message>
-        <source> (gzip compressed)</source>
-        <translation> (compresso con gzip)</translation>
     </message>
     <message>
         <source>Format</source>
@@ -3131,6 +3252,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Duplicate this graph.</source>
         <translation>Duplica questo grafico.</translation>
+    </message>
+    <message>
+        <source>Clear all graphs.</source>
+        <translation>Cancella tutti i grafici.</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -3377,6 +3502,14 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Copy</source>
         <translation>Copia</translation>
+    </message>
+    <message>
+        <source>Copy from</source>
+        <translation>Copia da</translation>
+    </message>
+    <message>
+        <source>Copy graphs from another profile.</source>
+        <translation>Copia grafici da un altro profilo.</translation>
     </message>
     <message>
         <source>1 ms</source>
@@ -3784,6 +3917,14 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Direction indication:</source>
         <translation>Indicazione della direzione:</translation>
+    </message>
+    <message>
+        <source>ExportPDU</source>
+        <translation>EsportaPDU</translation>
+    </message>
+    <message>
+        <source>Payload</source>
+        <translation>Payload</translation>
     </message>
     <message>
         <source>Maximum frame length:</source>
@@ -5867,6 +6008,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Esporta i pacchetti specificati</translation>
     </message>
     <message>
+        <source>Export TLS Session Keys…</source>
+        <translation>Esporta chiavi di sessione SSL...</translation>
+    </message>
+    <message>
         <source>List Files</source>
         <translation>Elenca file</translation>
     </message>
@@ -6070,10 +6215,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Export Packet &amp;Bytes…</source>
         <translation>Esporta &amp;byte del pacchetto...</translation>
-    </message>
-    <message>
-        <source>Export SSL Session Keys…</source>
-        <translation>Esporta chiavi della sessione SSL...</translation>
     </message>
     <message>
         <source>&amp;Print…</source>
@@ -6306,6 +6447,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>TCP window scaling</source>
         <translation>Ridimensionamento della finestra TCP</translation>
+    </message>
+    <message>
+        <source>TLS Stream</source>
+        <translation>Flusso TLS</translation>
     </message>
     <message>
         <source>HTTP Stream</source>
@@ -6806,10 +6951,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>UDP Stream</source>
         <translation>Flusso UDP</translation>
-    </message>
-    <message>
-        <source>SSL Stream</source>
-        <translation>Flusso SSL</translation>
     </message>
     <message>
         <source>Request Sequences</source>
@@ -7340,10 +7481,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Non puoi esportare pacchetti sul file di cattura attuale.</translation>
     </message>
     <message>
-        <source>.</source>
-        <translation>.</translation>
-    </message>
-    <message>
         <source>Do you want to save the changes you&apos;ve made%1?</source>
         <oldsource>Do you want to save the captured packets</oldsource>
         <translation>Vuoi salvare le modifiche che hai apportato%1?</translation>
@@ -7405,10 +7542,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Ferma e continua senza sal&amp;vare</translation>
     </message>
     <message>
-        <source>(File name can&apos;t be mapped to UTF-8)</source>
-        <translation>(Il nome del file non può essere associato in UTF-8)</translation>
-    </message>
-    <message>
         <source>The Wireshark Network Analyzer</source>
         <translation>Wireshark l&apos;analizzatore di rete</translation>
     </message>
@@ -7456,14 +7589,13 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <source>No Keys</source>
         <translation>Nessuna chiave</translation>
     </message>
-    <message>
-        <source>There are no SSL Session Keys to save.</source>
-        <translation>Non ci sono chiavi di sessione SSL da salvare.</translation>
-    </message>
     <message numerus="yes">
         <source>Export SSL Session Keys (%Ln key(s))</source>
         <oldsource>Export SSL Session Keys (%1 key%2</oldsource>
-        <translation><numerusform>Esporta chiavi della sessione SSL (%Ln chiave)</numerusform><numerusform>Esporta chiavi della sessione SSL (%Ln chiavi)</numerusform></translation>
+        <translation type="vanished">
+            <numerusform>Esporta chiavi della sessione SSL (%Ln chiave)</numerusform>
+            <numerusform>Esporta chiavi della sessione SSL (%Ln chiavi)</numerusform>
+        </translation>
     </message>
     <message>
         <source>Raw data (*.bin *.dat *.raw);;All Files (</source>
@@ -7472,10 +7604,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Merging files</source>
         <translation>Unisci i file</translation>
-    </message>
-    <message>
-        <source>SSL Session Keys (*.keys *.txt);;All Files (</source>
-        <translation>Chiavi di sessione SSL (*.keys *.txt);;Tutti i file (</translation>
     </message>
     <message>
         <source>Couldn&apos;t copy text. Try another item.</source>
@@ -7514,6 +7642,21 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation> prima di iniziare una nuova cattura</translation>
     </message>
     <message>
+        <source>There are no TLS Session Keys to save.</source>
+        <translation>Non ci sono chiavi di sessione SSL da salvare.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Export TLS Session Keys (%Ln key(s))</source>
+        <translation>
+            <numerusform>Esporta chiavi dj sessione SSL (%Ln chiave)</numerusform>
+            <numerusform>Esporta chiavi di sessione SSL (%Ln chiavi)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>TLS Session Keys (*.keys *.txt);;All Files (</source>
+        <translation>Chiavi di sessione SSL (*.keys *.txt);;Tutti i file (</translation>
+    </message>
+    <message>
         <source> before restarting the capture</source>
         <translation> prima di riavviare la cattura</translation>
     </message>
@@ -7524,22 +7667,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>&lt;p&gt;The Wireshark Wiki is maintained by the community.&lt;/p&gt;&lt;p&gt;The page you are about to load might be wonderful, incomplete, wrong, or nonexistent.&lt;/p&gt;&lt;p&gt;Proceed to the wiki?&lt;/p&gt;</source>
         <translation>&lt;p&gt;Il Wiki di Wireshark è gestito dalla comunità.&lt;/p&gt;&lt;p&gt;La pagina che stai per caricare potrebbe essere perfetta, incompleta, errata o inesistente.&lt;/p&gt;&lt;p&gt;Vuoi proseguire?&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>Filter Button Preferences...</source>
-        <translation>Preferenze pulsante di filtro...</translation>
-    </message>
-    <message>
-        <source>Edit</source>
-        <translation>Modifica</translation>
-    </message>
-    <message>
-        <source>Disable</source>
-        <translation>Disabilita</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Rimuovi</translation>
     </message>
     <message>
         <source>Loading</source>
@@ -7600,6 +7727,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Confirm unsaved capture files</source>
         <translation>Conferma file di cattura non salvati</translation>
+    </message>
+    <message>
+        <source>Display autocompletion for filter text</source>
+        <translation>Visualizza il completamento automatico per il testo del filtro</translation>
     </message>
     <message>
         <source>Main toolbar style:</source>
@@ -7733,10 +7864,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Length</source>
         <translation>Lunghezza</translation>
-    </message>
-    <message>
-        <source> (gzip compressed)</source>
-        <translation> (compresso con gzip)</translation>
     </message>
     <message>
         <source>Format</source>
@@ -7967,6 +8094,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Summary line</source>
         <translation>Linea di sommario</translation>
+    </message>
+    <message>
+        <source>Include column headings</source>
+        <translation>Includi le intestazioni di colonna</translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Packet details similar to the protocol tree&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -10467,6 +10598,14 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Nessuna associazione trovata per questo pacchetto.</translation>
     </message>
     <message>
+        <source>Warning</source>
+        <translation>Avviso</translation>
+    </message>
+    <message>
+        <source>Could not find SCTP Association with id: %1</source>
+        <translation>Impossibile trovare l&apos;associazione SCTP con id: %1 </translation>
+    </message>
+    <message>
         <source>Complete list of IP-Addresses as provided in the INIT-Chunk</source>
         <translation>Elenco completo degli indirizzi IP come fornito nel blocco INIT</translation>
     </message>
@@ -10647,6 +10786,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Grafico SCTP</translation>
     </message>
     <message>
+        <source>Relative TSNs</source>
+        <translation>TSN relativi</translation>
+    </message>
+    <message>
         <source>Only SACKs</source>
         <translation>Solo SACK</translation>
     </message>
@@ -10661,10 +10804,6 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Reset to full size</source>
         <translation>Ripristina la dimensione massima</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Save Graph</source>
@@ -10899,11 +11038,17 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     </message>
     <message numerus="yes">
         <source>%Ln node(s)</source>
-        <translation><numerusform>%n nodo</numerusform><numerusform>%n nodi</numerusform></translation>
+        <translation>
+            <numerusform>%n nodo</numerusform>
+            <numerusform>%n nodi</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%Ln item(s)</source>
-        <translation><numerusform>%n voce</numerusform><numerusform>%n voci</numerusform></translation>
+        <translation>
+            <numerusform>%n voce</numerusform>
+            <numerusform>%n voci</numerusform>
+        </translation>
     </message>
     <message>
         <source>Portable Document Format (*.pdf)</source>
@@ -11238,7 +11383,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     </message>
     <message numerus="yes">
         <source>Frame %1, %2, %Ln byte(s).</source>
-        <translation><numerusform>Frame %1: %2, %Ln byte.</numerusform><numerusform>Frame %1: %2, %Ln byte.</numerusform></translation>
+        <translation>
+            <numerusform>Frame %1: %2, %Ln byte.</numerusform>
+            <numerusform>Frame %1: %2, %Ln byte.</numerusform>
+        </translation>
     </message>
     <message>
         <source>None</source>
@@ -11322,7 +11470,10 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     </message>
     <message numerus="yes">
         <source>Displaying %Ln byte(s).</source>
-        <translation><numerusform>Visualizzazione di %Ln byte.</numerusform><numerusform>Visualizzazione di %Ln byte.</numerusform></translation>
+        <translation>
+            <numerusform>Visualizzazione di %Ln byte.</numerusform>
+            <numerusform>Visualizzazione di %Ln byte.</numerusform>
+        </translation>
     </message>
     <message>
         <source>Regex Find:</source>
@@ -11456,8 +11607,8 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
 <context>
     <name>SyntaxLineEdit</name>
     <message>
-        <source>&quot;%1&quot; may have unexpected results (see the User&apos;s Guide)</source>
-        <translation>&quot;%1&quot; potrebbe avere dei risultati inattesi (vedi il Manuale utente)</translation>
+        <source>&quot;%1&quot; is deprecated or may have unexpected results. See the User&apos;s Guide.</source>
+        <translation>&quot;%1&quot; è sconsigliato e potrebbe avere dei comportamenti inattesi. Vedi il Manuale utente.</translation>
     </message>
 </context>
 <context>
@@ -12250,6 +12401,14 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
         <translation>Tabella accessibile dall&apos;utente sconosciuta</translation>
     </message>
     <message>
+        <source>Copy from</source>
+        <translation>Copia da</translation>
+    </message>
+    <message>
+        <source>Copy entries from another profile.</source>
+        <translation>Copia voci da un altro profilo.</translation>
+    </message>
+    <message>
         <source>Open </source>
         <translation>Apri </translation>
     </message>
@@ -12283,6 +12442,14 @@ NOTA: un&apos;opzione DEVE essere selezionata.</translation>
     <message>
         <source>Clear all entries.</source>
         <translation>Cancella tutte le voci.</translation>
+    </message>
+    <message>
+        <source>Copy entries from another profile.</source>
+        <translation>Copia voci da un altro profilo.</translation>
+    </message>
+    <message>
+        <source>Copy from</source>
+        <translation>Copia da</translation>
     </message>
     <message>
         <source>Unknown User Accessible Table</source>
@@ -12481,7 +12648,7 @@ a:hover {
 &lt;body&gt;
 
 &lt;table&gt;&lt;tr&gt;
-&lt;th&gt;&lt;a href=&quot;https://www.wireshark.org/docs/wsug_html_chunked/&quot;&gt;User's Guide&lt;/a&gt;&lt;/th&gt;
+&lt;th&gt;&lt;a href=&quot;https://www.wireshark.org/docs/wsug_html_chunked/&quot;&gt;User&apos;s Guide&lt;/a&gt;&lt;/th&gt;
 
 &lt;td style=&quot;padding-left: 8px; padding-right: 8px;&quot;&gt;·&lt;/td&gt;
 
@@ -12543,7 +12710,10 @@ a:hover {
     </message>
     <message numerus="yes">
         <source>%n interface(s) shown, %1 hidden</source>
-        <translation><numerusform>%n interfaccia mostrata, %1 nascoste</numerusform><numerusform>%n interfacce mostrate, %1 nascoste</numerusform></translation>
+        <translation>
+            <numerusform>%n interfaccia mostrata, %1 nascoste</numerusform>
+            <numerusform>%n interfacce mostrate, %1 nascoste</numerusform>
+        </translation>
     </message>
     <message>
         <source>You are sniffing the glue that holds the Internet together using Wireshark </source>
@@ -12552,10 +12722,6 @@ a:hover {
     <message>
         <source>You are running Wireshark </source>
         <translation>Stai eseguendo Wireshark </translation>
-    </message>
-    <message>
-        <source>.</source>
-        <translation>.</translation>
     </message>
     <message>
         <source> You receive automatic updates.</source>

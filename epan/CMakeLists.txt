@@ -133,6 +133,7 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	rtd_table.h
 	rtp_pt.h
 	sctpppids.h
+	secrets.h
 	show_exception.h
 	slow_protocol_subtypes.h
 	sminmpec.h
@@ -221,6 +222,7 @@ set(LIBWIRESHARK_NONGENERATED_FILES
 	register.c
 	req_resp_hdrs.c
 	rtd_table.c
+	secrets.c
 	sequence_analysis.c
 	show_exception.c
 	srt_table.c
@@ -376,7 +378,6 @@ target_link_libraries(epan
 		${SNAPPY_LIBRARIES}
 		${WIN_PSAPI_LIBRARY}
 		${LIBXML2_LIBRARIES}
-		${JSONGLIB_LIBRARIES}
 )
 
 target_include_directories(epan
@@ -391,16 +392,14 @@ add_dependencies(epan lemon)
 
 install(TARGETS epan
 	EXPORT WiresharkTargets
+	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-if(NOT WIN32)
-	install(FILES ${LIBWIRESHARK_PUBLIC_HEADERS}
-		DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan"
-	)
-endif()
+install(FILES ${LIBWIRESHARK_PUBLIC_HEADERS}
+	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan"
+)
 
 add_executable(exntest EXCLUDE_FROM_ALL exntest.c except.c)
 target_link_libraries(exntest ${GLIB2_LIBRARIES})
@@ -437,7 +436,7 @@ CHECKAPI(
 	NAME
 	  epan
 	SWITCHES
-	  -g termoutput -build
+	  --group termoutput:10 --summary-group termoutput --build
 	SOURCES
 	  ${LIBWIRESHARK_NONGENERATED_FILES}
 )

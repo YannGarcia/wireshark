@@ -198,6 +198,8 @@ bool MainWindow::openCaptureFile(QString cf_path, QString read_filter, unsigned 
                 ret = false;
                 goto finish;
             }
+        } else {
+            this->welcome_page_->getInterfaceFrame()->showRunOnFile();
         }
 
         // TODO detect call from "cf_read" -> "update_progress_dlg"
@@ -248,7 +250,6 @@ bool MainWindow::openCaptureFile(QString cf_path, QString read_filter, unsigned 
         }
 
         switch (cf_read(CaptureFile::globalCapFile(), FALSE)) {
-
         case CF_READ_OK:
         case CF_READ_ERROR:
             /* Just because we got an error, that doesn't mean we were unable
@@ -267,6 +268,7 @@ bool MainWindow::openCaptureFile(QString cf_path, QString read_filter, unsigned 
         }
         break;
     }
+
     // get_dirname overwrites its path.
     wsApp->setLastOpenDir(get_dirname(cf_path.toUtf8().data()));
 
@@ -323,7 +325,9 @@ void MainWindow::layoutToolbars()
 
     main_ui_->mainToolBar->setVisible(recent.main_toolbar_show);
     main_ui_->displayFilterToolBar->setVisible(recent.filter_toolbar_show);
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
     main_ui_->wirelessToolBar->setVisible(recent.wireless_toolbar_show);
+#endif
     main_ui_->statusBar->setVisible(recent.statusbar_show);
 
     foreach (QAction *action, main_ui_->menuInterfaceToolbars->actions()) {
@@ -1108,7 +1112,7 @@ void MainWindow::recentActionTriggered() {
 
 void MainWindow::setMenusForSelectedPacket()
 {
-    gboolean is_ip = FALSE, is_tcp = FALSE, is_udp = FALSE, is_sctp = FALSE, is_ssl = FALSE, is_rtp = FALSE, is_lte_rlc = FALSE, is_http = FALSE;
+    gboolean is_ip = FALSE, is_tcp = FALSE, is_udp = FALSE, is_sctp = FALSE, is_tls = FALSE, is_rtp = FALSE, is_lte_rlc = FALSE, is_http = FALSE;
 
     /* Making the menu context-sensitive allows for easier selection of the
        desired item and has the added benefit, with large captures, of
@@ -1167,7 +1171,7 @@ void MainWindow::setMenusForSelectedPacket()
         {
             proto_get_frame_protocols(capture_file_.capFile()->edt->pi.layers,
                                       &is_ip, &is_tcp, &is_udp, &is_sctp,
-                                      &is_ssl, &is_rtp, &is_lte_rlc);
+                                      &is_tls, &is_rtp, &is_lte_rlc);
             is_http = proto_is_frame_protocol(capture_file_.capFile()->edt->pi.layers, "http");
         }
     }
@@ -1215,7 +1219,7 @@ void MainWindow::setMenusForSelectedPacket()
 
     main_ui_->actionAnalyzeFollowTCPStream->setEnabled(is_tcp);
     main_ui_->actionAnalyzeFollowUDPStream->setEnabled(is_udp);
-    main_ui_->actionAnalyzeFollowSSLStream->setEnabled(is_ssl);
+    main_ui_->actionAnalyzeFollowTLSStream->setEnabled(is_tls);
     main_ui_->actionAnalyzeFollowHTTPStream->setEnabled(is_http);
 
     foreach (QAction *cc_action, cc_actions) {
@@ -1824,7 +1828,7 @@ void MainWindow::on_actionFileExportPDU_triggered()
     exportpdu_dialog->activateWindow();
 }
 
-void MainWindow::on_actionFileExportSSLSessionKeys_triggered()
+void MainWindow::on_actionFileExportTLSSessionKeys_triggered()
 {
     QString file_name;
     QString save_title;
@@ -1837,17 +1841,17 @@ void MainWindow::on_actionFileExportSSLSessionKeys_triggered()
         QMessageBox::warning(
                     this,
                     tr("No Keys"),
-                    tr("There are no SSL Session Keys to save."),
+                    tr("There are no TLS Session Keys to save."),
                     QMessageBox::Ok
                     );
         return;
     }
 
-    save_title.append(wsApp->windowTitleString(tr("Export SSL Session Keys (%Ln key(s))", "", keylist_len)));
+    save_title.append(wsApp->windowTitleString(tr("Export TLS Session Keys (%Ln key(s))", "", keylist_len)));
     file_name = WiresharkFileDialog::getSaveFileName(this,
                                              save_title,
                                              wsApp->lastOpenDir().canonicalPath(),
-                                             tr("SSL Session Keys (*.keys *.txt);;All Files (" ALL_FILES_WILDCARD ")")
+                                             tr("TLS Session Keys (*.keys *.txt);;All Files (" ALL_FILES_WILDCARD ")")
                                              );
     if (file_name.length() > 0) {
         gchar *keylist;
@@ -2168,9 +2172,11 @@ void MainWindow::showHideMainWidgets(QAction *action)
     } else if (widget == main_ui_->displayFilterToolBar) {
         recent.filter_toolbar_show = show;
         main_ui_->actionViewFilterToolbar->setChecked(show);
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
      } else if (widget == main_ui_->wirelessToolBar) {
         recent.wireless_toolbar_show = show;
         main_ui_->actionViewWirelessToolbar->setChecked(show);
+#endif
     } else if (widget == main_ui_->statusBar) {
         recent.statusbar_show = show;
         main_ui_->actionViewStatusBar->setChecked(show);
@@ -2776,9 +2782,9 @@ void MainWindow::on_actionAnalyzeFollowUDPStream_triggered()
     openFollowStreamDialog(FOLLOW_UDP);
 }
 
-void MainWindow::on_actionAnalyzeFollowSSLStream_triggered()
+void MainWindow::on_actionAnalyzeFollowTLSStream_triggered()
 {
-    openFollowStreamDialog(FOLLOW_SSL);
+    openFollowStreamDialog(FOLLOW_TLS);
 }
 
 void MainWindow::on_actionAnalyzeFollowHTTPStream_triggered()

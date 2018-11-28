@@ -35,9 +35,9 @@
  *  - IUR interface-specific formats
  *  - do CRC verification before further parsing
  *  - Set the logical channel properly for non multiplexed, channels
- *    for channels that doesn't have the C/T flag! This should be based
+ *    for channels that doesn't have the C/T field! This should be based
  *    on the RRC message RadioBearerSetup.
- *  - E-DCH (T1 & T2) heuristic dissectors
+ *  - E-DCH T2 heuristic dissector
  */
 void proto_register_fp(void);
 void proto_reg_handoff_fp(void);
@@ -110,6 +110,7 @@ static int hf_fp_edch_macis_descriptors = -1;
 static int hf_fp_edch_macis_lchid = -1;
 static int hf_fp_edch_macis_length = -1;
 static int hf_fp_edch_macis_flag = -1;
+static int hf_fp_edch_entity = -1;
 
 static int hf_fp_frame_seq_nr = -1;
 static int hf_fp_hsdsch_pdu_block_header = -1;
@@ -356,16 +357,11 @@ static const value_string hsdshc_mac_entity_vals[] = {
     { 0,   NULL }
 };
 
-/* TODO: add and use */
-#if 0
-static const value_string segmentation_status_vals[] = {
-    { 0,    "" },
-    { 1,    "" },
-    { 2,    "" },
-    { 3,    "" },
+static const value_string edch_mac_entity_vals[] = {
+    { 0,                    "MAC-e/es" },
+    { 1,                    "MAC-i/is" },
     { 0,   NULL }
 };
-#endif
 
 static const value_string lchid_vals[] = {
     {  0,   "Logical Channel 1" },
@@ -2719,7 +2715,7 @@ dissect_e_dch_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
             /* Subframe number */
             subframes[n].subframe_number = (tvb_get_guint8(tvb, offset) & 0x07);
             proto_tree_add_bits_item(subframe_header_tree, hf_fp_edch_subframe_number, tvb,
-                                     offset*8+5, 1, ENC_BIG_ENDIAN);
+                                     offset*8+5, 3, ENC_BIG_ENDIAN);
             offset++;
 
             /* Number of MAC-es PDUs */
@@ -2875,25 +2871,20 @@ dissect_e_dch_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                         next_tvb = tvb_new_subset_length(tvb, offset + bit_offset/8,
                                 ((bit_offset % 8) + size + 7) / 8);
 
-
-                        /*This was all previously stored in [0] rather than [macd_idx] and cur_tb wasn't updated!*/
                         /*Set up information needed for MAC and lower layers*/
                         macinf->content[macd_idx] = lchId_type_table[lchid];     /*Set the proper Content type for the mac layer.*/
                         macinf->lchid[macd_idx] = lchid;
                         rlcinf->mode[macd_idx] = lchId_rlc_map[lchid]; /* Set RLC mode by lchid to RLC_MODE map in nbap.h */
 
-                        /* Set U-RNTI to ComuncationContext signaled from nbap*/
+                        /* Set UE ID to U-RNTI or NBAP Comuncation Context*/
                         rlcinf->ueid[macd_idx] = user_identity;
-                        rlcinf->rbid[macd_idx] = lchid; /*subframes[n].ddi[i];*/    /*Save the DDI value for RLC*/
-                        /*g_warning("========Setting RBID:%d for lchid:%d", subframes[n].ddi[i], lchid);*/
-                        /* rlcinf->mode[0] = RLC_AM;*/
+                        rlcinf->rbid[macd_idx] = lchid;
                         rlcinf->li_size[macd_idx] = RLC_LI_7BITS;
 
                         rlcinf->ciphered[macd_idx] = FALSE;
                         rlcinf->deciphered[macd_idx] = FALSE;
                         p_fp_info->cur_tb = macd_idx;    /*Set the transport block index (NOTE: This and not subnum is used in MAC dissector!)*/
 
-                        /* TODO: use maces_tree? */
                         call_dissector_with_data(mac_fdd_edch_handle, next_tvb, pinfo, top_level_tree, data);
                         dissected = TRUE;
                     }
@@ -3256,9 +3247,6 @@ dissect_hsdsch_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
             macinf->lchid[i] = fake_lchid_macd_flow[p_fp_info->hsdsch_macflowd_id];/*Faked logical channel id 255 used as a mark if it doesn't exist...*/
             macinf->fake_chid[i] = TRUE;    /**/
             macinf->macdflow_id[i] = p_fp_info->hsdsch_macflowd_id;    /*Save the flow ID (+1 to make it human readable (it's zero indexed!))*/
-            /*Figure out RLC_MODE based on MACd-flow-ID, basically MACd-flow-ID = 0 then it's SRB0 == UM else AM*/
-            rlcinf->mode[i] = hsdsch_macdflow_id_rlc_map[p_fp_info->hsdsch_macflowd_id];
-
 
             /*Check if this is multiplexed (signaled by RRC)*/
             if (p_fp_info->hsdhsch_macfdlow_is_mux[p_fp_info->hsdsch_macflowd_id] ) {
@@ -3268,6 +3256,18 @@ dissect_hsdsch_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
             } else {
                     macinf->ctmux[i] = FALSE;    /*Either it's multiplexed and not signled or it's not MUX*/
             }
+
+            /* Figure out RLC mode */
+            if(p_fp_info->hsdsch_rlc_mode != FP_RLC_MODE_UNKNOWN) {
+                /* We know the RLC mode, possibly reported from NBAP */
+                rlcinf->mode[i] = (enum rlc_mode)(p_fp_info->hsdsch_rlc_mode - 1);
+            }
+            else {
+                /* Guess the mode by the MACd-flow-ID, basically MACd-flow-ID = 0 then it's SRB0 == UM else AM */
+                /* This logic might be incorrect sometimes */
+                rlcinf->mode[i] = hsdsch_macdflow_id_rlc_map[p_fp_info->hsdsch_macflowd_id];
+            }
+
             rlcinf->ueid[i] = user_identity;
             rlcinf->li_size[i] = RLC_LI_7BITS;
             rlcinf->deciphered[i] = FALSE;
@@ -3390,9 +3390,10 @@ dissect_hsdsch_type_2_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree
         guint16 user_buffer_size;
         int n;
         guint j;
+        guint64 lchid_val;
 
         #define MAX_PDU_BLOCKS 31
-        guint64 lchid[MAX_PDU_BLOCKS];
+        guint64 lchid_field[MAX_PDU_BLOCKS];
         guint64 pdu_length[MAX_PDU_BLOCKS];
         guint64 no_of_pdus[MAX_PDU_BLOCKS];
 
@@ -3495,7 +3496,7 @@ dissect_hsdsch_type_2_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree
             /* Logical channel ID in block (4 bits) */
             proto_tree_add_bits_ret_val(pdu_block_header_tree, hf_fp_lchid, tvb,
                                         (offset*8) + ((n % 2) ? 4 : 0), 4,
-                                        &lchid[n], ENC_BIG_ENDIAN);
+                                        &lchid_field[n], ENC_BIG_ENDIAN);
             if ((n % 2) == 1) {
                 offset++;
             }
@@ -3509,7 +3510,7 @@ dissect_hsdsch_type_2_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree
             /* Append summary to header tree root */
             proto_item_append_text(pdu_block_header_ti,
                                    " (lch:%u, %u pdus of %u bytes)",
-                                   (guint16)lchid[n],
+                                   (guint16)lchid_field[n],
                                    (guint16)no_of_pdus[n],
                                    (guint16)pdu_length[n]);
 
@@ -3557,30 +3558,38 @@ dissect_hsdsch_type_2_channel_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree
             for (j=0;j<no_of_pdus[n];j++) {
 
                 /*Configure (signal to lower layers) the PDU!*/
-                macinf->content[j] = lchId_type_table[lchid[n]+1];/*hsdsch_macdflow_id_mac_content_map[p_fp_info->hsdsch_macflowd_id];*/ /*MAC_CONTENT_PS_DTCH;*/
-                macinf->lchid[j] = (guint8)lchid[n]+1;    /*Add 1 since C/T is zero indexed? ie C/T =0 => L-CHID = 1*/
-                macinf->macdflow_id[j] = p_fp_info->hsdsch_macflowd_id;
-                /*Figure out RLC_MODE based on MACd-flow-ID, basically MACd-flow-ID = 0 then it's SRB0 == UM else AM*/
-                rlcinf->mode[j] = lchId_rlc_map[lchid[n]+1];/*hsdsch_macdflow_id_rlc_map[p_fp_info->hsdsch_macflowd_id];*/
+                if (lchid_field[n] != 0x0f) {
+                    lchid_val = lchid_field[n] + 1; /* Add 1 since 'LCHID' field is zero indexed. ie field value = 0 => Actual L-CHID = 1*/
+                    macinf->content[j] = lchId_type_table[lchid_val];
+                    macinf->lchid[j] = (guint8)lchid_val;
+                    macinf->macdflow_id[j] = p_fp_info->hsdsch_macflowd_id;
+                    /*Figure out RLC_MODE based on MACd-flow-ID, basically MACd-flow-ID = 0 then it's SRB0 == UM else AM*/
+                    rlcinf->mode[j] = lchId_rlc_map[lchid_val];
 
-                macinf->ctmux[n] = FALSE;
+                    macinf->ctmux[n] = FALSE;
 
-                rlcinf->li_size[j] = RLC_LI_7BITS;
-
-                /** Configure ciphering **/
-#if 0
-                /*If this entry exists, SECRUITY_MODE is completed*/
-                if ( rrc_ciph_inf && g_tree_lookup(rrc_ciph_inf, GINT_TO_POINTER((gint)p_fp_info->com_context_id)) ) {
-                    rlcinf->ciphered[j] = TRUE;
-                } else {
+                    rlcinf->li_size[j] = RLC_LI_7BITS;
                     rlcinf->ciphered[j] = FALSE;
-                }
-#endif
-                rlcinf->ciphered[j] = FALSE;
-                rlcinf->deciphered[j] = FALSE;
-                rlcinf->rbid[j] = (guint8)lchid[n]+1;
+                    rlcinf->deciphered[j] = FALSE;
+                    rlcinf->rbid[j] = (guint8)lchid_val;
 
-                rlcinf->ueid[j] = user_identity;
+                    rlcinf->ueid[j] = user_identity;
+                }
+                else {
+                    /* LCHID field is 15. This value indicates BCCH or PCCH mapped on HS-DSCH*/
+                    /* The dissector does not handle this case yet, so we are filling zeroes and default values below*/
+                    macinf->content[j] = MAC_CONTENT_UNKNOWN;
+                    macinf->lchid[j] = 0; /* LCHID field doesn't reflect a real ID in this case*/
+                    macinf->macdflow_id[j] = 0;
+                    macinf->ctmux[j] = FALSE;
+
+                    rlcinf->mode[j] = RLC_TM; /* PCCH and BCCH should be using RLC TM? */
+                    rlcinf->li_size[j] = RLC_LI_7BITS;
+                    rlcinf->ciphered[j] = FALSE;
+                    rlcinf->deciphered[j] = FALSE;
+                    rlcinf->rbid[j] = 0;
+                    rlcinf->ueid[j] = 0;
+                }
             }
 
             /* Add PDU block header subtree */
@@ -3921,6 +3930,28 @@ check_payload_crc_for_heur(tvbuff_t *tvb, guint16 header_length)
     payload_length = (reported_length - payload_index) - 2;
     data = tvb_get_ptr(tvb, payload_index, payload_length);
     calc_crc = crc16_8005_noreflect_noxor(data, payload_length);
+
+    return calc_crc == crc;
+}
+/* Validates the header CRC in a E-DCH Data FP frame */
+/* Should only be used in heuristic dissectors! */
+static gboolean
+check_edch_header_crc_for_heur(tvbuff_t *tvb, guint16 header_length)
+{
+    guint16 crc = 0;
+    guint16 calc_crc = 0;
+    guint8 * data = NULL;
+
+    if (header_length > tvb_captured_length(tvb))
+        return FALSE;
+
+    crc = (tvb_get_bits8(tvb, 0, 7) << 4) + tvb_get_bits8(tvb, 8, 4);
+    /* Get data of header excluding the first byte */
+    data = (guint8 *)tvb_memdup(wmem_packet_scope(), tvb, 1, header_length-1);
+    /*Zero the part in the second byte which contains part of the CRC*/
+    data[0] = data[0] & 0x0f;
+
+    calc_crc = crc11_307_noreflect_noxor(data, header_length-1);
 
     return calc_crc == crc;
 }
@@ -4991,6 +5022,177 @@ heur_dissect_fp_hsdsch_type_2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     dissect_fp(tvb, pinfo, tree, data);
     return TRUE;
 }
+
+static gboolean
+heur_dissect_fp_edch_type_1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+{
+    conversation_t   *p_conv;
+    umts_fp_conversation_info_t* umts_fp_conversation_info = NULL;
+    fp_edch_channel_info_t* fp_edch_channel_info;
+    struct fp_info *p_fp_info;
+    guint32 captured_length;
+    guint8 frame_type;
+    guint8 num_sub_frames_byte;
+    guint8 number_of_subframes;
+    guint8 number_of_mac_es_pdus;
+    guint32 subframe_number;
+    guint32 total_sub_headers_len;
+    guint32 total_header_length;
+    guint32 payload_length;
+    guint32 total_mac_pdus_count;
+    guint32 macd_pdu_bit_size;
+    guint32 bit_offset;
+    guint32 offset;
+    guint32 i = 0;
+    guint32 n = 0;
+
+    /* Trying to find existing conversation */
+    p_conv = (conversation_t *)find_conversation(pinfo->num, &pinfo->net_dst, &pinfo->net_src,
+        conversation_pt_to_endpoint_type(pinfo->ptype),
+        pinfo->destport, pinfo->srcport, NO_ADDR_B);
+
+    if (p_conv != NULL) {
+        /* Checking if the conversation was already framed */
+        umts_fp_conversation_info = (umts_fp_conversation_info_t *)conversation_get_proto_data(p_conv, proto_fp);
+        if (umts_fp_conversation_info) {
+            fp_edch_channel_info = (fp_edch_channel_info_t*)umts_fp_conversation_info->channel_specific_info;
+            if (umts_fp_conversation_info->channel == CHANNEL_EDCH && fp_edch_channel_info->edch_type == 0) {
+                conversation_set_dissector(p_conv, fp_handle);
+                dissect_fp(tvb, pinfo, tree, data);
+                return TRUE;
+            }
+            else if (umts_fp_conversation_info->channel != CHANNEL_UNKNOWN){
+                /* This conversation was successfuly framed as ANOTHER type */
+                return FALSE;
+            }
+        }
+    }
+
+    /* Making sure FP info isn't already attached */
+    p_fp_info = (fp_info *)p_get_proto_data(wmem_file_scope(), pinfo, proto_fp, 0);
+    if (p_fp_info) {
+        return FALSE;
+    }
+
+    captured_length = tvb_reported_length(tvb);
+    /* Lengths limit: header size + at least 1 Subframe Header + CRC Payload size */
+    if (captured_length < 9) {
+        return FALSE;
+    }
+
+    frame_type = tvb_get_guint8(tvb, 0) & 0x01;
+    if (frame_type == 1) { /* is 'control' frame type*/
+        return FALSE;
+    }
+
+    num_sub_frames_byte = tvb_get_guint8(tvb, 2);
+    /* Checking 4 leftmost bits in the 'Number of Subframes' byte, which are reserved and should be 0 */
+    if (num_sub_frames_byte & 0xf0) {
+        return FALSE;
+    }
+
+    /* Values {11-16} are reserved */
+    number_of_subframes = (num_sub_frames_byte & 0x0f) + 1;
+    if (number_of_subframes >= 11) {
+        return FALSE;
+    }
+
+    /* Iterating through the block headers looking for invalid fields */
+    total_header_length = 4;
+    offset = 4;
+    total_mac_pdus_count = 0;
+    /* EDCH subframe header list */
+    for (n=0; n < number_of_subframes; n++) {
+
+        /* Making sure the next index is not out of range */
+        if (((guint32)(offset + 3)) >= captured_length) {
+            return FALSE;
+        }
+
+        /* Subframe number */
+        subframe_number = (tvb_get_guint8(tvb, offset) & 0x07);
+        if (subframe_number > 4) {
+            return FALSE;
+        }
+        offset++;
+
+        /* Number of MAC-es PDUs */
+        number_of_mac_es_pdus = (tvb_get_guint8(tvb, offset) & 0xf0) >> 4;
+        if (number_of_mac_es_pdus == 0) {
+            return FALSE;
+        }
+        bit_offset = 4;
+
+        /* Making sure enough bytes are presesnt for all sub-header */
+        total_sub_headers_len = ((int)((((1.5 + (number_of_mac_es_pdus * 1.5))*8+7)/8)));
+        if ((offset + total_sub_headers_len) >= captured_length) {
+            return FALSE;
+        }
+        /* Details of each MAC-es PDU */
+        for (i=0; i < number_of_mac_es_pdus; i++) {
+            guint32 n_pdus;    /*Size of the PDU*/
+
+            /* DDI (6 bits) */
+            bit_offset += 6;
+
+            /* Number of MAC-d PDUs (6 bits) */
+            n_pdus = tvb_get_bits8( tvb, offset*8 + bit_offset, 6);
+            total_mac_pdus_count += n_pdus;
+            bit_offset += 6;
+        }
+
+        total_header_length += total_sub_headers_len;
+        offset += ((bit_offset+7)/8);
+    }
+
+    /* Figure MAC bit size */
+    payload_length = captured_length - total_header_length - 3; /* Removing 3 bytes for Payload CRC and TSN */
+    if (payload_length == (total_mac_pdus_count * 42)) {
+        macd_pdu_bit_size = 336;
+    }
+    else if (payload_length == (total_mac_pdus_count * 18)) {
+        macd_pdu_bit_size = 144;
+    }
+    else {
+        /* Unexpected payload length or DDIs combination */
+        return FALSE;
+    }
+
+    if (!check_edch_header_crc_for_heur(tvb, total_header_length)) {
+        return FALSE;
+    }
+    if (!check_payload_crc_for_heur(tvb, total_header_length)) {
+        return FALSE;
+    }
+
+    if(!umts_fp_conversation_info) {
+        umts_fp_conversation_info = wmem_new0(wmem_file_scope(), umts_fp_conversation_info_t);
+        set_both_sides_umts_fp_conv_data(pinfo, umts_fp_conversation_info);
+    }
+    umts_fp_conversation_info->iface_type = IuB_Interface;
+    umts_fp_conversation_info->division = Division_FDD;
+    umts_fp_conversation_info->dl_frame_number = pinfo->num;
+    umts_fp_conversation_info->ul_frame_number = pinfo->num;
+    umts_fp_conversation_info->dch_crc_present = 1;
+    umts_fp_conversation_info->com_context_id = generate_ue_id_for_heur(pinfo);
+    umts_fp_conversation_info->rlc_mode = FP_RLC_AM;
+    copy_address_wmem(wmem_file_scope(), &(umts_fp_conversation_info->crnc_address), &pinfo->src);
+    umts_fp_conversation_info->crnc_port = pinfo->srcport;
+    umts_fp_conversation_info->channel = CHANNEL_EDCH;
+    fp_edch_channel_info = wmem_new0(wmem_file_scope(), fp_edch_channel_info_t);
+    fp_edch_channel_info->no_ddi_entries = 0x0f;
+    for(i = 0;i<0x0f;i++) {
+        fp_edch_channel_info->edch_ddi[i] = i;
+        fp_edch_channel_info->edch_macd_pdu_size[i] = macd_pdu_bit_size;
+        fp_edch_channel_info->edch_lchId[i] = 9;
+    }
+    fp_edch_channel_info->edch_type = 0; /* Type 1 */
+    umts_fp_conversation_info->channel_specific_info = (void*)fp_edch_channel_info;
+
+    conversation_set_dissector(find_or_create_conversation(pinfo), fp_handle);
+    dissect_fp(tvb, pinfo, tree, data);
+    return TRUE;
+}
 /* This method can frame UDP streams containing FP packets but dissection of those packets will */
 /* fail since the FP conversation info is never attached */
 /* Usefull for DCH streams containing CS data and don't have their own heuristic method */
@@ -5116,6 +5318,9 @@ heur_dissect_fp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
     match = heur_dissect_fp_hsdsch_type_2(tvb, pinfo, tree, data);
     if(match)
         return TRUE;
+    match = heur_dissect_fp_edch_type_1(tvb, pinfo, tree, data);
+    if(match)
+        return TRUE;
     /* NOTE: Add new heuristic dissectors BEFORE the 'unknown format' dissector */
     /* since it might 'swallow' packets if the UDP stream is framed as 'CHANNEL_UNKNOWN' */
     match = heur_dissect_fp_unknown_format(tvb, pinfo, tree, data);
@@ -5179,7 +5384,7 @@ fp_set_per_packet_inf_from_conv(conversation_t *p_conv,
                                 proto_tree *tree _U_)
 {
     fp_info  *fpi;
-    guint8    tfi, c_t;
+    guint8    tfi, c_t, lchid;
     int       offset = 0, i=0, j=0, num_tbs, chan, tb_size, tb_bit_off;
     gboolean  is_control_frame;
     gboolean  is_known_dcch_tf,is_stndalone_ps_rab_tf,is_muxed_cs_ps_tf;
@@ -5242,9 +5447,10 @@ fp_set_per_packet_inf_from_conv(conversation_t *p_conv,
                 break;
             }
             fpi->hsdsch_entity = fp_hsdsch_channel_info->hsdsch_entity;
+            fpi->hsdsch_rlc_mode = p_conv_data->rlc_mode;
             macinf = wmem_new0(wmem_file_scope(), umts_mac_info);
             fpi->hsdsch_macflowd_id = fp_hsdsch_channel_info->hsdsch_macdflow_id;
-            macinf->content[0] = hsdsch_macdflow_id_mac_content_map[fp_hsdsch_channel_info->hsdsch_macdflow_id]; /*MAC_CONTENT_PS_DTCH;*/
+            macinf->content[0] = hsdsch_macdflow_id_mac_content_map[fp_hsdsch_channel_info->hsdsch_macdflow_id];
             macinf->lchid[0] = fp_hsdsch_channel_info->hsdsch_macdflow_id;
             p_add_proto_data(wmem_file_scope(), pinfo, proto_umts_mac, 0, macinf);
 
@@ -5346,7 +5552,7 @@ fp_set_per_packet_inf_from_conv(conversation_t *p_conv,
                     p_conv_data->fp_dch_channel_info[chan].ul_chan_tf_size[tfi] :
                     p_conv_data->fp_dch_channel_info[chan].dl_chan_tf_size[tfi];
 
-                tb_bit_off = (2+p_conv_data->num_dch_in_flow)*8; /*Point to the C/T of first TB*/
+                tb_bit_off = (2 + p_conv_data->num_dch_in_flow) * 8; /*Point to the C/T of first TB*/
                 /* Iterate over the Transport Blocks */
                 /* Set configuration for each individual block */
                 for (j=0; j < num_tbs && j+chan < MAX_MAC_FRAMES; j++) {
@@ -5361,18 +5567,19 @@ fp_set_per_packet_inf_from_conv(conversation_t *p_conv,
                     is_muxed_cs_ps_tf = (p_conv_data->dch_ids_in_flow_list[chan] == 24 && tb_size == 340);
 
                     if (is_known_dcch_tf || is_muxed_cs_ps_tf) {
-                        /* Channel is multiplexed (ie. C/T flag present) */
+                        /* Channel is multiplexed (ie. C/T field present) */
                         macinf->ctmux[j+chan] = TRUE;
 
                         /* Peek at C/T, different RLC params for different logical channels */
                         /* C/T is 4 bits according to 3GPP TS 25.321, paragraph 9.2.1, from MAC header (not FP) */
-                        c_t = (tvb_get_bits8(tvb, tb_bit_off, 4) + 1) % 0xf;
-                        macinf->lchid[j+chan] = c_t;                     /* Logical Channel ID is the value in C/T */
-                        macinf->content[j+chan] = lchId_type_table[c_t]; /* Base MAC content on logical channel id (Table is in packet-nbap.h) */
-                        rlcinf->mode[j+chan] = lchId_rlc_map[c_t];       /* Base RLC mode on logical channel id */
+                        c_t = tvb_get_bits8(tvb, tb_bit_off, 4);
+                        lchid = (c_t + 1) % 0xf; /* C/T field represents the Logical Channel ID but it is zero-based */
+                        macinf->lchid[j+chan] = lchid;
+                        macinf->content[j+chan] = lchId_type_table[lchid]; /* Base MAC content on logical channel id (Table is in packet-nbap.h) */
+                        rlcinf->mode[j+chan] = lchId_rlc_map[lchid];       /* Base RLC mode on logical channel id */
                     }
                     else if (is_stndalone_ps_rab_tf) {
-                        /* Channel isn't multiplexed (ie. C/T flag not present) */
+                        /* Channel isn't multiplexed (ie. C/T field not present) */
                         macinf->ctmux[j+chan] = FALSE;
 
                         /* Using a fake 'interactive PS' DTCH logical channel id */
@@ -5384,7 +5591,7 @@ fp_set_per_packet_inf_from_conv(conversation_t *p_conv,
                     }
                     else {
                         /* Unfamiliar DCH format, faking LCHID */
-                        /* Asuming the channel isn't multiplexed (ie. C/T flag not present) */
+                        /* Asuming the channel isn't multiplexed (ie. C/T field not present) */
                         macinf->ctmux[j+chan] = FALSE;
 
                         /* TODO: This stuff has to be reworked! */
@@ -5407,7 +5614,7 @@ fp_set_per_packet_inf_from_conv(conversation_t *p_conv,
                     rlcinf->deciphered[j+chan] = FALSE;
                     rlcinf->rbid[j+chan] = macinf->lchid[j+chan];
 
-                    /*Step over this TB and it's C/T flag.*/
+                    /*Step over this TB and it's C/T field.*/
                     tb_bit_off += tb_size+4;
                 }
 
@@ -5787,6 +5994,15 @@ dissect_fp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
             break;
         case CHANNEL_EDCH:
         case CHANNEL_EDCH_COMMON:
+            /* Show configured MAC E-DCH entity in use */
+            if (fp_tree)
+            {
+                proto_item *entity_ti;
+                entity_ti = proto_tree_add_uint(fp_tree, hf_fp_edch_entity,
+                                                tvb, 0, 0,
+                                                p_fp_info->edch_type);
+                PROTO_ITEM_SET_GENERATED(entity_ti);
+            }
             dissect_e_dch_channel_info(tvb, pinfo, fp_tree, offset, p_fp_info,
                                        p_fp_info->channel == CHANNEL_EDCH_COMMON,
                                        data);
@@ -6225,6 +6441,12 @@ void proto_register_fp(void)
               { "Flag",
                 "fp.edch.mac-is.lchid", FT_UINT8, BASE_HEX, 0, 0x01,
                 "Indicates if another entry follows", HFILL
+              }
+            },
+            { &hf_fp_edch_entity,
+              { "E-DCH Entity",
+                "fp.edch.entity", FT_UINT8, BASE_DEC, VALS(edch_mac_entity_vals), 0x0,
+                "Type of MAC entity for this E-DCH channel", HFILL
               }
             },
             { &hf_fp_frame_seq_nr,

@@ -714,6 +714,7 @@ static int hf_pn_io_am_location_endsubslotnum = -1;
 static int hf_pn_io_am_software_revision = -1;
 static int hf_pn_io_am_hardware_revision = -1;
 static int hf_pn_io_am_type_identification = -1;
+static int hf_pn_io_am_reserved = -1;
 
 static int hf_pn_io_dcp_boundary_value = -1;
 static int hf_pn_io_dcp_boundary_value_bit0 = -1;
@@ -3957,6 +3958,7 @@ guint8 u8BlockVersionHigh, guint8 u8BlockVersionLow)
 {
     e_guid_t IM_UniqueIdentifier;
     guint16  u16AM_TypeIdentification;
+    guint16  u16AM_Reserved;
 
     if (u8BlockVersionHigh != 1 || u8BlockVersionLow != 0) {
         expert_add_info_format(pinfo, item, &ei_pn_io_block_version,
@@ -3998,6 +4000,10 @@ guint8 u8BlockVersionHigh, guint8 u8BlockVersionLow)
     /* AM_TypeIdentification */
     offset = dissect_dcerpc_uint16(tvb, offset, pinfo, tree, drep,
         hf_pn_io_am_type_identification, &u16AM_TypeIdentification);
+
+    /* AM_Reserved */
+    offset = dissect_dcerpc_uint16(tvb, offset, pinfo, tree, drep,
+        hf_pn_io_am_reserved, &u16AM_Reserved);
 
     return offset;
 }
@@ -8168,7 +8174,7 @@ dissect_AlarmCRBlockRes_block(tvbuff_t *tvb, int offset,
 /* dissect the ARServerBlock */
 static int
 dissect_ARServerBlock(tvbuff_t *tvb, int offset,
-    packet_info *pinfo, proto_tree *tree, proto_item *item, guint8 *drep, guint8 u8BlockVersionHigh, guint8 u8BlockVersionLow)
+    packet_info *pinfo, proto_tree *tree, proto_item *item, guint8 *drep, guint8 u8BlockVersionHigh, guint8 u8BlockVersionLow, guint16 u16BodyLength)
 {
     char    *pStationName;
     guint16  u16NameLength, u16padding;
@@ -8187,9 +8193,9 @@ dissect_ARServerBlock(tvbuff_t *tvb, int offset,
     pStationName[u16NameLength] = '\0';
     proto_tree_add_string (tree, hf_pn_io_cminitiator_station_name, tvb, offset, u16NameLength, pStationName);
     offset += u16NameLength;
-    /* Padding to next 4 byte allignment in this block */
-    u16padding = (u16NameLength-2) & 0x3;
-    if (u16padding >0)
+    /* Padding to next 4 byte alignment in this block */
+    u16padding = u16BodyLength - (2 + u16NameLength);
+    if (u16padding > 0)
         offset = dissect_pn_padding(tvb, offset, pinfo, tree, u16padding);
     return offset;
 }
@@ -10013,7 +10019,7 @@ dissect_block(tvbuff_t *tvb, int offset,
         dissect_ModuleDiffBlock_block(tvb, offset, pinfo, sub_tree, sub_item, drep, u8BlockVersionHigh, u8BlockVersionLow);
         break;
     case(0x8106):
-        dissect_ARServerBlock(tvb, offset, pinfo, sub_tree, sub_item, drep, u8BlockVersionHigh, u8BlockVersionLow);
+        dissect_ARServerBlock(tvb, offset, pinfo, sub_tree, sub_item, drep, u8BlockVersionHigh, u8BlockVersionLow, u16BodyLength);
         break;
     case(0x8110):
     case(0x8111):
@@ -10794,6 +10800,7 @@ dissect_RecordDataWrite(tvbuff_t *tvb, int offset,
     case(0x8090):   /* PDInterfaceFSUDataAdjust */
     case(0x80B0):   /* CombinedObjectContainer*/
     case(0x80CF):   /* RS_AdjustObserver */
+    case(0xaff3):   /* I&M3 */
     case(0xe030):   /* IsochronousModeData for one AR */
     case(0xe050):   /* FastStartUp data for one AR */
     case(0xe061):   /* RS_AckEvent (using RecordDataWrite service) */
@@ -11107,7 +11114,7 @@ dissect_PNIO_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     /* frame id must be in valid range (cyclic Real-Time, class=3) */
     if ((u16FrameID >= 0x0100 && u16FrameID <= 0x06FF) ||   /* RTC3 non redundant */
         (u16FrameID >= 0x700 && u16FrameID <= 0x0fff)) {    /* RTC3 redundant */
-        dissect_PNIO_C_SDU(tvb, 0, pinfo, tree, drep);
+        dissect_CSF_SDU_heur(tvb, pinfo, tree, data);
         return TRUE;
     }
 
@@ -13806,22 +13813,22 @@ proto_register_pn_io (void)
     },
     { &hf_pn_io_am_device_identification_device_sub_id,
         { "AM_DeviceIdentification.DeviceSubID", "pn_io.am_device_identification.device_sub_id",
-          FT_UINT64, BASE_HEX, NULL, 0x000000000000FFFF,
+          FT_UINT64, BASE_HEX, NULL, 0xFFFF000000000000,
           NULL, HFILL }
     },
     { &hf_pn_io_am_device_identification_device_id,
         { "AM_DeviceIdentification.DeviceID", "pn_io.am_device_identification.device_id",
-          FT_UINT64, BASE_HEX, NULL, 0x00000000FFFF0000,
+          FT_UINT64, BASE_HEX, NULL, 0x0000FFFF00000000,
           NULL, HFILL }
     },
     { &hf_pn_io_am_device_identification_vendor_id,
         { "AM_DeviceIdentification.VendorID", "pn_io.am_device_identification.vendor_id",
-          FT_UINT64, BASE_HEX, NULL, 0x0000FFFF00000000,
+          FT_UINT64, BASE_HEX, NULL, 0x00000000FFFF0000,
           NULL, HFILL }
     },
     { &hf_pn_io_am_device_identification_organization,
         { "AM_DeviceIdentification.Organization", "pn_io.am_device_identification.organization",
-          FT_UINT64, BASE_HEX, NULL, 0xFFFF000000000000,
+          FT_UINT64, BASE_HEX, NULL, 0x000000000000FFFF,
           NULL, HFILL }
     },
     { &hf_pn_io_rs_adjust_info,
@@ -14006,6 +14013,11 @@ proto_register_pn_io (void)
     },
     { &hf_pn_io_am_type_identification,
       { "AM Type Identification", "pn_io.am_type_identification",
+        FT_UINT16, BASE_HEX, NULL, 0x0,
+        NULL, HFILL }
+    },
+    { &hf_pn_io_am_reserved,
+      { "AM Reserved", "pn_io.am_reserved",
         FT_UINT16, BASE_HEX, NULL, 0x0,
         NULL, HFILL }
     },

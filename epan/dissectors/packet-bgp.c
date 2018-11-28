@@ -2079,6 +2079,7 @@ static gint ett_bgp_prefix_sid_originator_srgb_blocks = -1;
 static gint ett_bgp_prefix_sid_label_index = -1;
 static gint ett_bgp_prefix_sid_ipv6 = -1;
 
+static expert_field ei_bgp_marker_invalid = EI_INIT;
 static expert_field ei_bgp_cap_len_bad = EI_INIT;
 static expert_field ei_bgp_cap_gr_helper_mode_only = EI_INIT;
 static expert_field ei_bgp_notify_minor_unknown = EI_INIT;
@@ -3005,7 +3006,7 @@ decode_mcast_vpn_nlri(proto_tree *tree, tvbuff_t *tvb, gint offset, guint16 afi)
                                1, ENC_BIG_ENDIAN);
     offset++;
 
-    if (length < tvb_reported_length_remaining(tvb, offset))
+    if (length > tvb_reported_length_remaining(tvb, offset))
         return -1;
 
     item = proto_tree_add_item(tree, hf_bgp_mcast_vpn_nlri_t, tvb, offset,
@@ -3058,6 +3059,17 @@ decode_mcast_vpn_nlri(proto_tree *tree, tvbuff_t *tvb, gint offset, guint16 afi)
             ret = decode_mcast_vpn_nlri_addresses(nlri_tree, tvb, offset);
             if (ret < 0)
                 return -1;
+
+            offset = ret;
+
+            if (afi == AFNUM_INET)
+                proto_tree_add_item(nlri_tree,
+                                           hf_bgp_mcast_vpn_nlri_origin_router_ipv4,
+                                           tvb, offset, ip_length, ENC_BIG_ENDIAN);
+            else
+                proto_tree_add_item(nlri_tree,
+                                           hf_bgp_mcast_vpn_nlri_origin_router_ipv6,
+                                           tvb, offset, ip_length, ENC_NA);
             break;
 
         case MCAST_VPN_RTYPE_LEAF_AD:
@@ -8015,8 +8027,13 @@ dissect_bgp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     guint16       bgp_len;          /* Message length             */
     guint8        bgp_type;         /* Message type               */
     const char    *typ;             /* Message type (string)      */
+    proto_item    *ti_marker = NULL;/* marker item                */
     proto_item    *ti_len = NULL;   /* length item                */
     proto_tree    *bgp_tree = NULL; /* BGP packet tree            */
+    static const guint8 valid_marker[BGP_MARKER_SIZE] = {
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    };
 
     bgp_len = tvb_get_ntohs(tvb, BGP_MARKER_SIZE);
     bgp_type = tvb_get_guint8(tvb, BGP_MARKER_SIZE + 2);
@@ -8058,7 +8075,11 @@ dissect_bgp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                 break;
         }
 
-        proto_tree_add_item(bgp_tree, hf_bgp_marker, tvb, 0, 16, ENC_NA);
+        ti_marker = proto_tree_add_item(bgp_tree, hf_bgp_marker, tvb, 0,
+          BGP_MARKER_SIZE, ENC_NA);
+        if (tvb_memeql(tvb, 0, valid_marker, BGP_MARKER_SIZE) != 0) {
+             expert_add_info(pinfo, ti_marker, &ei_bgp_marker_invalid);
+        }
 
         ti_len = proto_tree_add_item(bgp_tree, hf_bgp_length, tvb, 16, 2, ENC_BIG_ENDIAN);
     }
@@ -10015,6 +10036,7 @@ proto_register_bgp(void)
       &ett_bgp_prefix_sid_originator_srgb_blocks,
     };
     static ei_register_info ei[] = {
+        { &ei_bgp_marker_invalid, { "bgp.marker_invalid", PI_MALFORMED, PI_ERROR, "Marker is not all ones", EXPFILL }},
         { &ei_bgp_cap_len_bad, { "bgp.cap.length.bad", PI_MALFORMED, PI_ERROR, "Capability length is wrong", EXPFILL }},
         { &ei_bgp_cap_gr_helper_mode_only, { "bgp.cap.gr.helper_mode_only", PI_REQUEST_CODE, PI_CHAT, "Graceful Restart Capability supported in Helper mode only", EXPFILL }},
         { &ei_bgp_notify_minor_unknown, { "bgp.notify.minor_error.unknown", PI_UNDECODED, PI_NOTE, "Unknown notification error", EXPFILL }},
