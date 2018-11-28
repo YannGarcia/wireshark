@@ -13,6 +13,7 @@ set(ASN1_SRC_DIRS
 	HI2Operations
 	acp133
 	acse
+	ain
 	ansi_map
 	ansi_tcap
 	atn-cm
@@ -20,6 +21,7 @@ set(ASN1_SRC_DIRS
 	atn-ulcs
 	c1222
 	camel
+	cbrs-oids
 	cdt
 	charging_ase
 	cmip
@@ -31,9 +33,11 @@ set(ASN1_SRC_DIRS
 	disp
 	dop
 	dsp
+	e1ap
 	ess
 	f1ap
 	ftam
+	glow
 	goose
 	gprscdr
 	gsm_map
@@ -50,12 +54,14 @@ set(ASN1_SRC_DIRS
 	h501
 	hnbap
 	idmp
+	ieee1609dot2
 	ilp
 	inap
 	isdn-sup
 	kerberos
 	lcsap
 	ldap
+	lnpdqp
 	logotypecertextn
 	lpp
 	lppa
@@ -68,6 +74,8 @@ set(ASN1_SRC_DIRS
 	mpeg-pes
 	mudurl
 	nbap
+	ngap
+	nist-csor
 	nr-rrc
 	ns_cert_exts
 	novell_pkis
@@ -78,6 +86,7 @@ set(ASN1_SRC_DIRS
 	p772
 	pcap
 	pkcs1
+	pkcs10
 	pkcs12
 	pkinit
 	pkix1explicit
@@ -108,6 +117,7 @@ set(ASN1_SRC_DIRS
 	t125
 	t38
 	tcap
+	tcg-cp-oids
 	tetra
 	ulp
 	wlancertextn
@@ -116,6 +126,7 @@ set(ASN1_SRC_DIRS
 	x509ce
 	x509if
 	x509sat
+	xnap
 	${CUSTOM_ASN1_SRC_DIR}
 )
 

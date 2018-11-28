@@ -198,9 +198,11 @@ typedef struct _vlan
     char              name[MAXVLANNAMELEN];
 } vlan_t;
 
+// Maps guint -> hashipxnet_t*
 static wmem_map_t *ipxnet_hash_table = NULL;
 static wmem_map_t *ipv4_hash_table = NULL;
 static wmem_map_t *ipv6_hash_table = NULL;
+// Maps guint -> hashvlan_t*
 static wmem_map_t *vlan_hash_table = NULL;
 static wmem_map_t *ss7pc_hash_table = NULL;
 
@@ -226,9 +228,11 @@ struct cb_serv_data {
     port_type    proto;
 };
 
+// Maps guint -> hashmanuf_t*
 static wmem_map_t *manuf_hashtable = NULL;
 static wmem_map_t *wka_hashtable = NULL;
 static wmem_map_t *eth_hashtable = NULL;
+// Maps guint -> serv_port_t*
 static wmem_map_t *serv_port_hashtable = NULL;
 static GHashTable *enterprises_hashtable = NULL;
 
@@ -513,46 +517,19 @@ typedef struct {
     const gchar* name; /* Shallow copy */
 } subnet_entry_t;
 
-/*
- *  Miscellaneous functions
- */
+/* Maximum supported line length of hosts, services, manuf, etc. */
+#define MAX_LINELEN     1024
 
+/** Read a line without trailing (CR)LF. Returns -1 on failure.  */
 static int
-fgetline(char **buf, int *size, FILE *fp)
+fgetline(char *buf, int size, FILE *fp)
 {
-    int len;
-    int c;
-
-    if (fp == NULL || buf == NULL)
-        return -1;
-
-    if (*buf == NULL) {
-        if (*size == 0)
-            *size = BUFSIZ;
-
-        *buf = (char *)wmem_alloc(wmem_epan_scope(), *size);
+    if (fgets(buf, size, fp)) {
+        int len = (int)strcspn(buf, "\r\n");
+        buf[len] = '\0';
+        return len;
     }
-
-    g_assert(*buf);
-    g_assert(*size > 0);
-
-    if (feof(fp))
-        return -1;
-
-    len = 0;
-    while ((c = ws_getc_unlocked(fp)) != EOF && c != '\r' && c != '\n') {
-        if (len+1 >= *size) {
-            *buf = (char *)wmem_realloc(wmem_epan_scope(), *buf, *size += BUFSIZ);
-        }
-        (*buf)[len++] = c;
-    }
-
-    if (len == 0 && c == EOF)
-        return -1;
-
-    (*buf)[len] = '\0';
-
-    return len;
+    return -1;
 
 } /* fgetline */
 
@@ -568,18 +545,11 @@ static void
 add_service_name(port_type proto, const guint port, const char *service_name)
 {
     serv_port_t *serv_port_table;
-    int *key;
 
-    key = (int *)wmem_new(wmem_epan_scope(), int);
-    *key = port;
-
-    serv_port_table = (serv_port_t *)wmem_map_lookup(serv_port_hashtable, &port);
+    serv_port_table = (serv_port_t *)wmem_map_lookup(serv_port_hashtable, GUINT_TO_POINTER(port));
     if (serv_port_table == NULL) {
         serv_port_table = wmem_new0(wmem_epan_scope(), serv_port_t);
-        wmem_map_insert(serv_port_hashtable, key, serv_port_table);
-    }
-    else {
-        wmem_free(wmem_epan_scope(), key);
+        wmem_map_insert(serv_port_hashtable, GUINT_TO_POINTER(port), serv_port_table);
     }
 
     switch(proto) {
@@ -679,8 +649,7 @@ static gboolean
 parse_services_file(const char * path)
 {
     FILE *serv_p;
-    static int     size = 0;
-    static char   *buf = NULL;
+    char    buf[MAX_LINELEN];
 
     /* services hash table initialization */
     serv_p = ws_fopen(path, "r");
@@ -688,7 +657,7 @@ parse_services_file(const char * path)
     if (serv_p == NULL)
         return FALSE;
 
-    while (fgetline(&buf, &size, serv_p) >= 0) {
+    while (fgetline(buf, sizeof(buf), serv_p) >= 0) {
         parse_service_line(buf);
     }
 
@@ -714,7 +683,7 @@ _serv_name_lookup(port_type proto, guint port, serv_port_t **value_ret)
 {
     serv_port_t *serv_port_table;
 
-    serv_port_table = (serv_port_t *)wmem_map_lookup(serv_port_hashtable, &port);
+    serv_port_table = (serv_port_t *)wmem_map_lookup(serv_port_hashtable, GUINT_TO_POINTER(port));
 
     if (value_ret != NULL)
         *value_ret = serv_port_table;
@@ -748,17 +717,14 @@ serv_name_lookup(port_type proto, guint port)
 {
     serv_port_t *serv_port_table = NULL;
     const char *name;
-    guint *key;
 
     name = _serv_name_lookup(proto, port, &serv_port_table);
     if (name != NULL)
         return name;
 
     if (serv_port_table == NULL) {
-        key = (guint *)wmem_new(wmem_epan_scope(), guint);
-        *key = port;
         serv_port_table = wmem_new0(wmem_epan_scope(), serv_port_t);
-        wmem_map_insert(serv_port_hashtable, key, serv_port_table);
+        wmem_map_insert(serv_port_hashtable, GUINT_TO_POINTER(port), serv_port_table);
     }
     if (serv_port_table->numeric == NULL) {
         serv_port_table->numeric = wmem_strdup_printf(wmem_epan_scope(), "%u", port);
@@ -772,7 +738,7 @@ initialize_services(void)
 {
     gboolean parse_file = TRUE;
     g_assert(serv_port_hashtable == NULL);
-    serv_port_hashtable = wmem_map_new(wmem_epan_scope(), g_int_hash, g_int_equal);
+    serv_port_hashtable = wmem_map_new(wmem_epan_scope(), g_direct_hash, g_direct_equal);
 
     /* Compute the pathname of the services file. */
     if (g_services_path == NULL) {
@@ -832,14 +798,13 @@ static gboolean
 parse_enterprises_file(const char * path)
 {
     FILE *fp;
-    static int size = 0;
-    static char *buf = NULL;
+    char    buf[MAX_LINELEN];
 
     fp = ws_fopen(path, "r");
     if (fp == NULL)
         return FALSE;
 
-    while (fgetline(&buf, &size, fp) >= 0) {
+    while (fgetline(buf, sizeof(buf), fp) >= 0) {
         parse_enterprises_line(buf);
     }
 
@@ -1166,9 +1131,105 @@ host_lookup6(const ws_in6_addr *addr)
  * -- Laurent.
  */
 
+/*
+ * Converts Ethernet addresses of the form aa:bb:cc or aa:bb:cc:dd:ee:ff/28. The
+ * octets must be exactly two hexadecimal characters and the mask must be either
+ * 28 or 36. Pre-condition: cp MUST be at least 21 bytes.
+ */
+static gboolean
+parse_ether_address_fast(const guchar *cp, ether_t *eth, unsigned int *mask,
+        const gboolean accept_mask)
+{
+    /* XXX copied from strutil.c */
+    /* a map from ASCII hex chars to their value */
+    static const gint8 str_to_nibble[256] = {
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+         0, 1, 2, 3, 4, 5, 6, 7, 8, 9,-1,-1,-1,-1,-1,-1,
+        -1,10,11,12,13,14,15,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,10,11,12,13,14,15,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+    };
+    const guint8 *str_to_nibble_usg = (const guint8 *)str_to_nibble;
+
+    if (cp[2] != ':' || cp[5] != ':') {
+        /* Unexpected separators. */
+        return FALSE;
+    }
+
+    guint8 num0 = (str_to_nibble_usg[cp[0]] << 4) | str_to_nibble_usg[cp[1]];
+    guint8 num1 = (str_to_nibble_usg[cp[3]] << 4) | str_to_nibble_usg[cp[4]];
+    guint8 num2 = (str_to_nibble_usg[cp[6]] << 4) | str_to_nibble_usg[cp[7]];
+    if (((num0 | num1 | num2) & 0x80)) {
+        /* Not hexadecimal numbers. */
+        return FALSE;
+    }
+
+    eth->addr[0] = num0;
+    eth->addr[1] = num1;
+    eth->addr[2] = num2;
+
+    if (cp[8] == '\0' && accept_mask) {
+        /* Indicate that this is a manufacturer ID (0 is not allowed as a mask). */
+        *mask = 0;
+        return TRUE;
+    } else if (cp[8] != ':' || !accept_mask) {
+        /* Format not handled by this fast path. */
+        return FALSE;
+    }
+
+    guint8 num3 = (str_to_nibble_usg[cp[9]] << 4) | str_to_nibble_usg[cp[10]];
+    guint8 num4 = (str_to_nibble_usg[cp[12]] << 4) | str_to_nibble_usg[cp[13]];
+    guint8 num5 = (str_to_nibble_usg[cp[15]] << 4) | str_to_nibble_usg[cp[16]];
+    if (((num3 | num4 | num5) & 0x80) || cp[11] != ':' || cp[14] != ':') {
+        /* Not hexadecimal numbers or invalid separators. */
+        return FALSE;
+    }
+
+    eth->addr[3] = num3;
+    eth->addr[4] = num4;
+    eth->addr[5] = num5;
+    if (cp[17] == '\0') {
+        /* We got 6 bytes, so this is a MAC address (48 is not allowed as a mask). */
+        *mask = 48;
+        return TRUE;
+    } else if (cp[17] != '/' || cp[20] != '\0') {
+        /* Format not handled by this fast path. */
+        return FALSE;
+    }
+
+    int m1 = cp[18];
+    int m2 = cp[19];
+    if (m1 == '3' && m2 == '6') {   /* Mask /36 */
+        eth->addr[4] &= 0xf0;
+        eth->addr[5] = 0;
+        *mask = 36;
+        return TRUE;
+    }
+    if (m1 == '2' && m2 == '8') {   /* Mask /28 */
+        eth->addr[3] &= 0xf0;
+        eth->addr[4] = 0;
+        eth->addr[5] = 0;
+        *mask = 28;
+        return TRUE;
+    }
+    /* Unsupported mask */
+    return FALSE;
+}
 
 /*
- * If "accept_mask" is FALSE,  either 3 or 6 bytes are valid, but no other number of bytes is.
+ * If "accept_mask" is FALSE, cp must point to an address that consists
+ * of exactly 6 bytes.
  * If "accept_mask" is TRUE, parse an up-to-6-byte sequence with an optional
  * mask.
  */
@@ -1291,8 +1352,12 @@ parse_ether_line(char *line, ether_t *eth, unsigned int *mask,
     if ((cp = strtok(line, " \t")) == NULL)
         return -1;
 
-    if (!parse_ether_address(cp, eth, mask, accept_mask))
-        return -1;
+    /* First try to match the common format for the large ethers file. */
+    if (!parse_ether_address_fast(cp, eth, mask, accept_mask)) {
+        /* Fallback for the well-known addresses (wka) file. */
+        if (!parse_ether_address(cp, eth, mask, accept_mask))
+            return -1;
+    }
 
     if ((cp = strtok(NULL, " \t")) == NULL)
         return -1;
@@ -1336,13 +1401,12 @@ get_ethent(unsigned int *mask, const gboolean accept_mask)
 {
 
     static ether_t eth;
-    static int     size = 0;
-    static char   *buf = NULL;
+    char    buf[MAX_LINELEN];
 
     if (eth_p == NULL)
         return NULL;
 
-    while (fgetline(&buf, &size, eth_p) >= 0) {
+    while (fgetline(buf, sizeof(buf), eth_p) >= 0) {
         if (parse_ether_line(buf, &eth, mask, accept_mask) == 0) {
             return &eth;
         }
@@ -1381,13 +1445,12 @@ get_ethbyaddr(const guint8 *addr)
 static hashmanuf_t *
 manuf_hash_new_entry(const guint8 *addr, char* name, char* longname)
 {
-    int    *manuf_key;
+    guint manuf_key;
     hashmanuf_t *manuf_value;
     char *endp;
 
     /* manuf needs only the 3 most significant octets of the ethernet address */
-    manuf_key = (int *)wmem_new(wmem_epan_scope(), int);
-    *manuf_key = (int)((addr[0] << 16) + (addr[1] << 8) + addr[2]);
+    manuf_key = (addr[0] << 16) + (addr[1] << 8) + addr[2];
     manuf_value = wmem_new(wmem_epan_scope(), hashmanuf_t);
 
     memcpy(manuf_value->addr, addr, 3);
@@ -1410,7 +1473,7 @@ manuf_hash_new_entry(const guint8 *addr, char* name, char* longname)
     endp = bytes_to_hexstr_punct(manuf_value->hexaddr, addr, sizeof(manuf_value->addr), ':');
     *endp = '\0';
 
-    wmem_map_insert(manuf_hashtable, manuf_key, manuf_value);
+    wmem_map_insert(manuf_hashtable, GUINT_TO_POINTER(manuf_key), manuf_value);
     return manuf_value;
 }
 
@@ -1450,7 +1513,7 @@ add_manuf_name(const guint8 *addr, unsigned int mask, gchar *name, gchar *longna
 static hashmanuf_t *
 manuf_name_lookup(const guint8 *addr)
 {
-    gint32       manuf_key = 0;
+    guint32       manuf_key;
     guint8       oct;
     hashmanuf_t  *manuf_value;
 
@@ -1465,7 +1528,7 @@ manuf_name_lookup(const guint8 *addr)
 
 
     /* first try to find a "perfect match" */
-    manuf_value = (hashmanuf_t*)wmem_map_lookup(manuf_hashtable, &manuf_key);
+    manuf_value = (hashmanuf_t*)wmem_map_lookup(manuf_hashtable, GUINT_TO_POINTER(manuf_key));
     if (manuf_value != NULL) {
         return manuf_value;
     }
@@ -1477,7 +1540,7 @@ manuf_name_lookup(const guint8 *addr)
      * 0x02 locally administered bit */
     if ((manuf_key & 0x00010000) != 0) {
         manuf_key &= 0x00FEFFFF;
-        manuf_value = (hashmanuf_t*)wmem_map_lookup(manuf_hashtable, &manuf_key);
+        manuf_value = (hashmanuf_t*)wmem_map_lookup(manuf_hashtable, GUINT_TO_POINTER(manuf_key));
         if (manuf_value != NULL) {
             return manuf_value;
         }
@@ -1551,7 +1614,7 @@ initialize_ethers(void)
 
     /* hash table initialization */
     wka_hashtable   = wmem_map_new(wmem_epan_scope(), eth_addr_hash, eth_addr_cmp);
-    manuf_hashtable = wmem_map_new(wmem_epan_scope(), g_int_hash, g_int_equal);
+    manuf_hashtable = wmem_map_new(wmem_epan_scope(), g_direct_hash, g_direct_equal);
     eth_hashtable   = wmem_map_new(wmem_epan_scope(), eth_addr_hash, eth_addr_cmp);
 
     /* Compute the pathname of the ethers file. */
@@ -1848,13 +1911,12 @@ get_ipxnetent(void)
 {
 
     static ipxnet_t ipxnet;
-    static int     size = 0;
-    static char   *buf = NULL;
+    char    buf[MAX_LINELEN];
 
     if (ipxnet_p == NULL)
         return NULL;
 
-    while (fgetline(&buf, &size, ipxnet_p) >= 0) {
+    while (fgetline(buf, sizeof(buf), ipxnet_p) >= 0) {
         if (parse_ipxnets_line(buf, &ipxnet) == 0) {
             return &ipxnet;
         }
@@ -1925,14 +1987,10 @@ ipxnet_name_lookup(wmem_allocator_t *allocator, const guint addr)
     hashipxnet_t *tp;
     ipxnet_t *ipxnet;
 
-    tp = (hashipxnet_t *)wmem_map_lookup(ipxnet_hash_table, &addr);
+    tp = (hashipxnet_t *)wmem_map_lookup(ipxnet_hash_table, GUINT_TO_POINTER(addr));
     if (tp == NULL) {
-        int *key;
-
-        key = (int *)wmem_new(wmem_epan_scope(), int);
-        *key = addr;
         tp = wmem_new(wmem_epan_scope(), hashipxnet_t);
-        wmem_map_insert(ipxnet_hash_table, key, tp);
+        wmem_map_insert(ipxnet_hash_table, GUINT_TO_POINTER(addr), tp);
     } else {
         return wmem_strdup(allocator, tp->name);
     }
@@ -2007,13 +2065,12 @@ get_vlanent(void)
 {
 
     static vlan_t vlan;
-    static int     size = 0;
-    static char   *buf = NULL;
+    char    buf[MAX_LINELEN];
 
     if (vlan_p == NULL)
         return NULL;
 
-    while (fgetline(&buf, &size, vlan_p) >= 0) {
+    while (fgetline(buf, sizeof(buf), vlan_p) >= 0) {
         if (parse_vlan_line(buf, &vlan) == 0) {
             return &vlan;
         }
@@ -2045,7 +2102,7 @@ static void
 initialize_vlans(void)
 {
     g_assert(vlan_hash_table == NULL);
-    vlan_hash_table = wmem_map_new(wmem_epan_scope(), g_int_hash, g_int_equal);
+    vlan_hash_table = wmem_map_new(wmem_epan_scope(), g_direct_hash, g_direct_equal);
 
     /* Set g_pvlan_path here, but don't actually do anything
      * with it. It's used in get_vlannamebyid()
@@ -2069,14 +2126,10 @@ vlan_name_lookup(const guint id)
     hashvlan_t *tp;
     vlan_t *vlan;
 
-    tp = (hashvlan_t *)wmem_map_lookup(vlan_hash_table, &id);
+    tp = (hashvlan_t *)wmem_map_lookup(vlan_hash_table, GUINT_TO_POINTER(id));
     if (tp == NULL) {
-        int *key;
-
-        key = (int *)wmem_new(wmem_epan_scope(), int);
-        *key = id;
         tp = wmem_new(wmem_epan_scope(), hashvlan_t);
-        wmem_map_insert(vlan_hash_table, key, tp);
+        wmem_map_insert(vlan_hash_table, GUINT_TO_POINTER(id), tp);
     } else {
         return tp->name;
     }
@@ -2102,8 +2155,7 @@ static gboolean
 read_hosts_file (const char *hostspath, gboolean store_entries)
 {
     FILE *hf;
-    char *line = NULL;
-    int size = 0;
+    char line[MAX_LINELEN];
     gchar *cp;
     union {
         guint32 ip4_addr;
@@ -2118,7 +2170,7 @@ read_hosts_file (const char *hostspath, gboolean store_entries)
     if ((hf = ws_fopen(hostspath, "r")) == NULL)
         return FALSE;
 
-    while (fgetline(&line, &size, hf) >= 0) {
+    while (fgetline(line, sizeof(line), hf) >= 0) {
         if ((cp = strchr(line, '#')))
             *cp = '\0';
 
@@ -2147,7 +2199,6 @@ read_hosts_file (const char *hostspath, gboolean store_entries)
             }
         }
     }
-    wmem_free(wmem_epan_scope(), line);
 
     fclose(hf);
     return entry_found ? TRUE : FALSE;
@@ -2274,8 +2325,7 @@ static gboolean
 read_subnets_file (const char *subnetspath)
 {
     FILE *hf;
-    char *line = NULL;
-    int size = 0;
+    char line[MAX_LINELEN];
     gchar *cp, *cp2;
     guint32 host_addr; /* IPv4 ONLY */
     guint8 mask_length;
@@ -2283,7 +2333,7 @@ read_subnets_file (const char *subnetspath)
     if ((hf = ws_fopen(subnetspath, "r")) == NULL)
         return FALSE;
 
-    while (fgetline(&line, &size, hf) >= 0) {
+    while (fgetline(line, sizeof(line), hf) >= 0) {
         if ((cp = strchr(line, '#')))
             *cp = '\0';
 
@@ -2314,7 +2364,6 @@ read_subnets_file (const char *subnetspath)
 
         subnet_entry_set(host_addr, mask_length, cp);
     }
-    wmem_free(wmem_epan_scope(), line);
 
     fclose(hf);
     return TRUE;
@@ -2534,8 +2583,7 @@ static gboolean
 read_ss7pcs_file(const char *ss7pcspath)
 {
     FILE *hf;
-    char *line = NULL;
-    int size = 0;
+    char line[MAX_LINELEN];
     gchar *cp;
     guint8 ni;
     guint32 pc;
@@ -2547,7 +2595,7 @@ read_ss7pcs_file(const char *ss7pcspath)
     if ((hf = ws_fopen(ss7pcspath, "r")) == NULL)
         return FALSE;
 
-    while (fgetline(&line, &size, hf) >= 0) {
+    while (fgetline(line, sizeof(line), hf) >= 0) {
         if ((cp = strchr(line, '#')))
             *cp = '\0';
 
@@ -2571,7 +2619,6 @@ read_ss7pcs_file(const char *ss7pcspath)
         entry_found = TRUE;
         add_ss7pc_name(ni, pc, cp);
     }
-    wmem_free(wmem_epan_scope(), line);
 
     fclose(hf);
     return entry_found ? TRUE : FALSE;
@@ -2890,14 +2937,14 @@ add_manually_resolved(void)
     }
 }
 
-void
+static void
 host_name_lookup_init(void)
 {
     char *hostspath;
     guint i;
 
     g_assert(ipxnet_hash_table == NULL);
-    ipxnet_hash_table = wmem_map_new(wmem_epan_scope(), g_int_hash, g_int_equal);
+    ipxnet_hash_table = wmem_map_new(wmem_epan_scope(), g_direct_hash, g_direct_equal);
 
     g_assert(ipv4_hash_table == NULL);
     ipv4_hash_table = wmem_map_new(wmem_epan_scope(), g_direct_hash, g_direct_equal);
@@ -2960,7 +3007,7 @@ host_name_lookup_init(void)
     ss7pc_name_lookup_init();
 }
 
-void
+static void
 host_name_lookup_cleanup(void)
 {
     guint32 i, j;
@@ -2989,6 +3036,13 @@ host_name_lookup_cleanup(void)
 
     have_subnet_entry = FALSE;
     new_resolved_objects = FALSE;
+}
+
+
+void host_name_lookup_reset(void)
+{
+    host_name_lookup_cleanup();
+    host_name_lookup_init();
 }
 
 void
@@ -3205,7 +3259,7 @@ const gchar *
 get_manuf_name_if_known(const guint8 *addr)
 {
     hashmanuf_t *manuf_value;
-    int manuf_key;
+    guint manuf_key;
     guint8 oct;
 
     /* manuf needs only the 3 most significant octets of the ethernet address */
@@ -3217,7 +3271,7 @@ get_manuf_name_if_known(const guint8 *addr)
     oct = addr[2];
     manuf_key = manuf_key | oct;
 
-    manuf_value = (hashmanuf_t *)wmem_map_lookup(manuf_hashtable, &manuf_key);
+    manuf_value = (hashmanuf_t *)wmem_map_lookup(manuf_hashtable, GUINT_TO_POINTER(manuf_key));
     if ((manuf_value == NULL) || (manuf_value->status == HASHETHER_STATUS_UNRESOLVED)) {
         return NULL;
     }
@@ -3231,7 +3285,7 @@ uint_get_manuf_name_if_known(const guint manuf_key)
 {
     hashmanuf_t *manuf_value;
 
-    manuf_value = (hashmanuf_t *)wmem_map_lookup(manuf_hashtable, &manuf_key);
+    manuf_value = (hashmanuf_t *)wmem_map_lookup(manuf_hashtable, GUINT_TO_POINTER(manuf_key));
     if ((manuf_value == NULL) || (manuf_value->status == HASHETHER_STATUS_UNRESOLVED)) {
         return NULL;
     }
@@ -3468,8 +3522,7 @@ addr_resolv_init(void)
     initialize_ipxnets();
     initialize_vlans();
     initialize_enterprises();
-    /* host name initialization is done on a per-capture-file basis */
-    /*host_name_lookup_init();*/
+    host_name_lookup_init();
 }
 
 /* Clean up all the address resolution subsystems in this file */
@@ -3481,8 +3534,7 @@ addr_resolv_cleanup(void)
     ethers_cleanup();
     ipx_name_lookup_cleanup();
     enterprises_cleanup();
-    /* host name initialization is done on a per-capture-file basis */
-    /*host_name_lookup_cleanup();*/
+    host_name_lookup_cleanup();
 }
 
 gboolean
@@ -3495,6 +3547,23 @@ gboolean
 str_to_ip6(const char *str, void *dst)
 {
     return ws_inet_pton6(str, (ws_in6_addr *)dst);
+}
+
+/*
+ * convert a 0-terminated string that contains an ethernet address into
+ * the corresponding sequence of 6 bytes
+ * eth_bytes is a buffer >= 6 bytes that was allocated by the caller
+ */
+gboolean
+str_to_eth(const char *str, char *eth_bytes)
+{
+    ether_t eth;
+
+    if (!parse_ether_address(str, &eth, NULL, FALSE))
+        return FALSE;
+
+    memcpy(eth_bytes, eth.addr, sizeof(eth.addr));
+    return TRUE;
 }
 
 /*

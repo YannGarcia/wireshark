@@ -72,6 +72,22 @@
         <translation>Licence</translation>
     </message>
     <message>
+        <source>The directory does not exist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Should the directory %1 be created?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The directory could not be created</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The directory %1 could not be created!</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Copy</source>
         <translation type="unfinished">Copier</translation>
     </message>
@@ -886,8 +902,16 @@
         <translation>Longueur</translation>
     </message>
     <message>
-        <source> (gzip compressed)</source>
-        <translation>(compressé gzip)</translation>
+        <source>Hash (SHA256)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hash (RIPEMD160)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hash (SHA1)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Format</source>
@@ -1268,6 +1292,10 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation>gigaoctets</translation>
     </message>
     <message>
+        <source>Switch to the next file after the specified number of packets have been captured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;After capturing has switched to the next file and the given number of files has exceeded, the oldest file will be removed.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Après basculement de la capture vers le fichier suivant, si le nombre de fichiers donné est dépassé, le fichier le plus ancien sera supprimé.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1399,10 +1427,7 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Multiple files: No file limit given. You must specify a file size or interval at which is switched to the next capture file
- if you want to use multiple files.</source>
-        <oldsource>Multiple files: No file limit given. You must specify a file size or duration at which is switched to the next capture file
- if you want to use multiple files.</oldsource>
+        <source>Multiple files: No file limit given. You must specify a file size, interval, or number of packets for each file.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1449,6 +1474,10 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation>Défilement automatique dans la capture en temps réel</translation>
     </message>
     <message>
+        <source>Don&apos;t load interfaces on startup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Disable external capture interfaces</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1481,6 +1510,10 @@ NOTE: Une option DOIT être sélectionnée.</translation>
     <message>
         <source>Duplicate this coloring rule.</source>
         <translation>Dupliquer cette règle de coloration.</translation>
+    </message>
+    <message>
+        <source>Clear all coloring rules.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Set the foreground color for this rule.</source>
@@ -1525,6 +1558,18 @@ NOTE: Une option DOIT être sélectionnée.</translation>
     <message>
         <source>Coloring Rules %1</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy coloring rules from another profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open </source>
+        <translation type="unfinished">Ouvrir </translation>
     </message>
     <message>
         <source>Double click to edit. Drag to move. Rules are processed in order until a match is found.</source>
@@ -1673,8 +1718,8 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation>Dialogue</translation>
     </message>
     <message>
-        <source>Dissector Tables</source>
-        <translation>Tables de dissecteur</translation>
+        <source>Conversation Hash Tables</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1723,8 +1768,16 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation>Copier la dissection.</translation>
     </message>
     <message>
+        <source>Clear all dissection behaviors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Decode As</source>
         <translation>Décoder comme</translation>
+    </message>
+    <message>
+        <source>Open </source>
+        <translation type="unfinished">Ouvrir </translation>
     </message>
 </context>
 <context>
@@ -2192,6 +2245,14 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation>Chercher les objects</translation>
     </message>
     <message>
+        <source>Text Filter:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Only display entries containing this string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Export</source>
         <translation>Exporter</translation>
     </message>
@@ -2398,6 +2459,10 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation>Filtres d&apos;affichage</translation>
     </message>
     <message>
+        <source>Open </source>
+        <translation type="unfinished">Ouvrir </translation>
+    </message>
+    <message>
         <source>New filter</source>
         <translation>Nouveau filtre</translation>
     </message>
@@ -2456,6 +2521,25 @@ NOTE: Une option DOIT être sélectionnée.</translation>
     </message>
     <message>
         <source>Invalid filter expression.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FilterExpressionToolBar</name>
+    <message>
+        <source>Filter Button Preferences...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation type="unfinished">Editer</translation>
+    </message>
+    <message>
+        <source>Disable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2949,10 +3033,6 @@ NOTE: Une option DOIT être sélectionnée.</translation>
         <translation>Longueur</translation>
     </message>
     <message>
-        <source> (gzip compressed)</source>
-        <translation>(compressé gzip)</translation>
-    </message>
-    <message>
         <source>Format</source>
         <translation>Format</translation>
     </message>
@@ -3149,6 +3229,10 @@ NOTE: Une option DOIT être sélectionnée.</translation>
     <message>
         <source>Duplicate this graph.</source>
         <translation>Dupliquer ce graphique.</translation>
+    </message>
+    <message>
+        <source>Clear all graphs.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -3395,6 +3479,14 @@ NOTE: Une option DOIT être sélectionnée.</translation>
     <message>
         <source>Copy</source>
         <translation>Copier</translation>
+    </message>
+    <message>
+        <source>Copy from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy graphs from another profile.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>1 ms</source>
@@ -3802,6 +3894,14 @@ NOTE: Une option DOIT être sélectionnée.</translation>
     <message>
         <source>Direction indication:</source>
         <translation>Indication de direction:</translation>
+    </message>
+    <message>
+        <source>ExportPDU</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Payload</source>
+        <translation type="unfinished">Payload</translation>
     </message>
     <message>
         <source>Maximum frame length:</source>
@@ -5545,57 +5645,13 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
 </context>
 <context>
     <name>MainWelcome</name>
-    <message>
-        <source>Form</source>
-        <translation type="vanished">Formulaire</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Welcome to Wireshark&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Bienvenue dans Wireshark&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;h2&gt;Open&lt;/h2&gt;</source>
-        <translation type="vanished">&lt;h2&gt;Ouvrir&lt;/h2&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Capture live packets from your network.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Capturer des paquets live de votre réseau.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;h2&gt;Capture&lt;/h2&gt;</source>
-        <translation type="vanished">&lt;h2&gt;Capture&lt;/h2&gt;</translation>
-    </message>
-    <message>
-        <source>…using this filter:</source>
-        <translation type="vanished">...en utilisant ce filtre</translation>
-    </message>
-    <message>
-        <source>&lt;h2&gt;Learn&lt;/h2&gt;</source>
-        <translation type="vanished">&lt;h2&gt;Découvrir&lt;/h2&gt;</translation>
-    </message>
-    <message>
-        <source>You are running Wireshark </source>
-        <translation type="vanished">Vous exécutez Wireshark</translation>
-    </message>
-    <message>
-        <source>.</source>
-        <translation type="vanished">.</translation>
-    </message>
-    <message>
-        <source> You receive automatic updates.</source>
-        <translation type="vanished">Vous recevez les mises à jour automatiques.</translation>
-    </message>
-    <message>
-        <source> You have disabled automatic updates.</source>
-        <translation type="vanished">Vous avez désactivé les mises à jour automatiques.</translation>
-    </message>
-    <message>
-        <source>not found</source>
-        <translation type="vanished">Non trouvé</translation>
-    </message>
-    <message>
-        <source>Copy file path</source>
-        <translation type="vanished">Copier le chemin du fichier</translation>
+    <message numerus="yes">
+        <source>%n interface(s) shown, %1 hidden</source>
+        <oldsource>%Ln interface(s) shown</oldsource>
+        <translation type="obsolete">
+            <numerusform>%n interface shown, %1 hidden</numerusform>
+            <numerusform>%n interfaces shown, %1 hidden</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -5929,6 +5985,10 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>Exporter les paquets specifiés</translation>
     </message>
     <message>
+        <source>Export TLS Session Keys…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>List Files</source>
         <translation>Liste des fichiers</translation>
     </message>
@@ -6132,10 +6192,6 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     <message>
         <source>Export Packet &amp;Bytes…</source>
         <translation>Exporter Paquets &amp;Octets...</translation>
-    </message>
-    <message>
-        <source>Export SSL Session Keys…</source>
-        <translation>Exporter Clés de Session SSL...</translation>
     </message>
     <message>
         <source>&amp;Print…</source>
@@ -6368,6 +6424,10 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     <message>
         <source>TCP window scaling</source>
         <translation>Mise à l&apos;échelle de la fenêtre TCP</translation>
+    </message>
+    <message>
+        <source>TLS Stream</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>HTTP Stream</source>
@@ -6868,10 +6928,6 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     <message>
         <source>UDP Stream</source>
         <translation>Flux UDP</translation>
-    </message>
-    <message>
-        <source>SSL Stream</source>
-        <translation>Flux SSL</translation>
     </message>
     <message>
         <source>Request Sequences</source>
@@ -7402,10 +7458,6 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>Vous ne pouvez pas exporter les paquets de la capture en cours.</translation>
     </message>
     <message>
-        <source>.</source>
-        <translation>.</translation>
-    </message>
-    <message>
         <source>Do you want to save the changes you&apos;ve made%1?</source>
         <oldsource>Do you want to save the captured packets</oldsource>
         <translation type="unfinished"></translation>
@@ -7467,10 +7519,6 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>(File name can&apos;t be mapped to UTF-8)</source>
-        <translation>(Nom du fichier ne peut pas être mappé à l&apos;UTF-8)</translation>
-    </message>
-    <message>
         <source>The Wireshark Network Analyzer</source>
         <translation>L&apos;analyseur de réseau Wireshark</translation>
     </message>
@@ -7519,27 +7567,11 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>Aucune clés</translation>
     </message>
     <message>
-        <source>There are no SSL Session Keys to save.</source>
-        <translation>Il y a aucune clé de Session SSL à sauvegarder.</translation>
-    </message>
-    <message numerus="yes">
-        <source>Export SSL Session Keys (%Ln key(s))</source>
-        <oldsource>Export SSL Session Keys (%1 key%2</oldsource>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-        </translation>
-    </message>
-    <message>
         <source>Raw data (*.bin *.dat *.raw);;All Files (</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Merging files</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>SSL Session Keys (*.keys *.txt);;All Files (</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7579,6 +7611,21 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>avant de commencer une nouvelle capture</translation>
     </message>
     <message>
+        <source>There are no TLS Session Keys to save.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>Export TLS Session Keys (%Ln key(s))</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>TLS Session Keys (*.keys *.txt);;All Files (</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source> before restarting the capture</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7591,22 +7638,6 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>&lt;p&gt;Le Wiki Wireshark est maintenu par la communauté&lt;/p&gt;
 &lt;p&gt;La page que vous vous apprêtez à charger peut être magnifique, incomplète, fausse ou inexistante&lt;/p&gt;
 &lt;p&gt;Poursuivre vers le wiki?&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>Filter Button Preferences...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Edit</source>
-        <translation type="unfinished">Editer</translation>
-    </message>
-    <message>
-        <source>Disable</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Loading</source>
@@ -7667,6 +7698,10 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     <message>
         <source>Confirm unsaved capture files</source>
         <translation>Toujours Confirmer avant un fichier de capture non sauvegardé</translation>
+    </message>
+    <message>
+        <source>Display autocompletion for filter text</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Main toolbar style:</source>
@@ -7800,10 +7835,6 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     <message>
         <source>Length</source>
         <translation>Longueur</translation>
-    </message>
-    <message>
-        <source> (gzip compressed)</source>
-        <translation>(compressé gzip)</translation>
     </message>
     <message>
         <source>Format</source>
@@ -8034,6 +8065,10 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     <message>
         <source>Summary line</source>
         <translation>Résumé</translation>
+    </message>
+    <message>
+        <source>Include column headings</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Packet details similar to the protocol tree&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -10528,6 +10563,14 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>Aucune association trouvé pour ce paquet.</translation>
     </message>
     <message>
+        <source>Warning</source>
+        <translation type="unfinished">Avertissement</translation>
+    </message>
+    <message>
+        <source>Could not find SCTP Association with id: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Complete list of IP-Addresses as provided in the INIT-Chunk</source>
         <translation>Liste complète des adresses IP prévu dans le bloc INIT Chunk</translation>
     </message>
@@ -10708,6 +10751,10 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>Graphiquie SCTP</translation>
     </message>
     <message>
+        <source>Relative TSNs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Only SACKs</source>
         <translation>Seulement SACKs</translation>
     </message>
@@ -10722,10 +10769,6 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     <message>
         <source>Reset to full size</source>
         <translation>Remise à taille réelle</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Save Graph</source>
@@ -11506,7 +11549,7 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
 <context>
     <name>SyntaxLineEdit</name>
     <message>
-        <source>&quot;%1&quot; may have unexpected results (see the User&apos;s Guide)</source>
+        <source>&quot;%1&quot; is deprecated or may have unexpected results. See the User&apos;s Guide.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -12306,6 +12349,14 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
         <translation>inconnu UAT</translation>
     </message>
     <message>
+        <source>Copy from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy entries from another profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open </source>
         <translation>Ouvrir </translation>
     </message>
@@ -12338,6 +12389,14 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     </message>
     <message>
         <source>Clear all entries.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy entries from another profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy from</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -12479,7 +12538,7 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Welcome to Wireshark&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Bienvenue dans Wireshark&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Open a file on your file system&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -12487,7 +12546,7 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     </message>
     <message>
         <source>&lt;h2&gt;Open&lt;/h2&gt;</source>
-        <translation type="unfinished">&lt;h2&gt;Ouvrir&lt;/h2&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Recent capture files</source>
@@ -12499,15 +12558,15 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Capture live packets from your network.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Capturer des paquets live de votre réseau.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;h2&gt;Capture&lt;/h2&gt;</source>
-        <translation type="unfinished">&lt;h2&gt;Capture&lt;/h2&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>…using this filter:</source>
-        <translation type="unfinished">...en utilisant ce filtre</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Interface list</source>
@@ -12519,7 +12578,7 @@ Changer la direction de la connexion (voir le flux inverse).&lt;/p&gt;&lt;/body&
     </message>
     <message>
         <source>&lt;h2&gt;Learn&lt;/h2&gt;</source>
-        <translation type="unfinished">&lt;h2&gt;Découvrir&lt;/h2&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head&gt;
@@ -12570,8 +12629,8 @@ a:hover {
     <message numerus="yes">
         <source>%n interface(s) shown, %1 hidden</source>
         <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+            <numerusform>%n interface shown, %1 hidden</numerusform>
+            <numerusform>%n interfaces shown, %1 hidden</numerusform>
         </translation>
     </message>
     <message>
@@ -12580,27 +12639,23 @@ a:hover {
     </message>
     <message>
         <source>You are running Wireshark </source>
-        <translation type="unfinished">Vous exécutez Wireshark</translation>
-    </message>
-    <message>
-        <source>.</source>
-        <translation type="unfinished">.</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source> You receive automatic updates.</source>
-        <translation type="unfinished">Vous recevez les mises à jour automatiques.</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source> You have disabled automatic updates.</source>
-        <translation type="unfinished">Vous avez désactivé les mises à jour automatiques.</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>not found</source>
-        <translation type="unfinished">Non trouvé</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Copy file path</source>
-        <translation type="unfinished">Copier le chemin du fichier</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Remove</source>

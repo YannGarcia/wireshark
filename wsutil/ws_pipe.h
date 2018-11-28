@@ -42,14 +42,14 @@ typedef struct _ws_pipe_t {
 /**
  * @brief Run a process using g_spawn_sync on UNIX and Linux, and
  *        CreateProcess on Windows. Wait for it to finish.
- * @param [IN] dirname Initial working directory.
+ * @param [IN] working_directory Initial working directory.
  * @param [IN] command Command to run.
  * @param [IN] argc Number of arguments for the command, not including the command itself.
  * @param [IN] argv Arguments for the command, not including the command itself.
  * @param [OUT] command_output If not NULL, receives a copy of the command output. Must be g_freed.
  * @return TRUE on success or FALSE on failure.
  */
-WS_DLL_PUBLIC gboolean ws_pipe_spawn_sync ( gchar * dirname, gchar * command, gint argc, gchar ** argv, gchar ** command_output );
+WS_DLL_PUBLIC gboolean ws_pipe_spawn_sync(const gchar * working_directory, const gchar * command, gint argc, gchar ** argv, gchar ** command_output);
 
 /**
  * @brief Initialize a ws_pipe_t struct. Sets .pid to WS_INVALID_PID and all other members to 0 or NULL.
@@ -72,6 +72,12 @@ static inline gboolean ws_pipe_valid(ws_pipe_t *ws_pipe)
  * @return A valid PID on success, otherwise WS_INVALID_PID.
  */
 WS_DLL_PUBLIC GPid ws_pipe_spawn_async (ws_pipe_t * ws_pipe, GPtrArray * args );
+
+/**
+ * @brief Stop a process started with ws_pipe_spawn_async
+ * @param ws_pipe The process PID, stdio descriptors, etc.
+ */
+WS_DLL_PUBLIC void ws_pipe_close(ws_pipe_t * ws_pipe);
 
 #ifdef _WIN32
 /**

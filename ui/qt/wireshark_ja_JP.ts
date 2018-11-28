@@ -29,7 +29,7 @@
     </message>
     <message>
         <source>Search Authors</source>
-        <translation type="unfinished"></translation>
+        <translation>著者を検索</translation>
     </message>
     <message>
         <source>Folders</source>
@@ -37,7 +37,7 @@
     </message>
     <message>
         <source>Filter by path</source>
-        <translation type="unfinished"></translation>
+        <translation>パスでフィルタ</translation>
     </message>
     <message>
         <source>Plugins</source>
@@ -70,6 +70,22 @@
     <message>
         <source>License</source>
         <translation>ライセンス</translation>
+    </message>
+    <message>
+        <source>The directory does not exist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Should the directory %1 be created?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The directory could not be created</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The directory %1 could not be created!</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Copy</source>
@@ -883,8 +899,16 @@
         <translation>長さ</translation>
     </message>
     <message>
-        <source> (gzip compressed)</source>
-        <translation> (gzip圧縮)</translation>
+        <source>Hash (SHA256)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hash (RIPEMD160)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hash (SHA1)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Format</source>
@@ -1263,6 +1287,10 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>ギガバイト</translation>
     </message>
     <message>
+        <source>Switch to the next file after the specified number of packets have been captured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;After capturing has switched to the next file and the given number of files has exceeded, the oldest file will be removed.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;キャプチャが次のファイルに切り替えられた後、与えられたファイル数を超過したら、最も古いファイルが消されます&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1394,10 +1422,7 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Multiple files: No file limit given. You must specify a file size or interval at which is switched to the next capture file
- if you want to use multiple files.</source>
-        <oldsource>Multiple files: No file limit given. You must specify a file size or duration at which is switched to the next capture file
- if you want to use multiple files.</oldsource>
+        <source>Multiple files: No file limit given. You must specify a file size, interval, or number of packets for each file.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1444,6 +1469,10 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>キャプチャ中に自動スクロール</translation>
     </message>
     <message>
+        <source>Don&apos;t load interfaces on startup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Disable external capture interfaces</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1476,6 +1505,10 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Duplicate this coloring rule.</source>
         <translation>この色付けルールを複製します</translation>
+    </message>
+    <message>
+        <source>Clear all coloring rules.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Set the foreground color for this rule.</source>
@@ -1520,6 +1553,18 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Coloring Rules %1</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy coloring rules from another profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open </source>
+        <translation type="unfinished">開く </translation>
     </message>
     <message>
         <source>Double click to edit. Drag to move. Rules are processed in order until a match is found.</source>
@@ -1668,8 +1713,8 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>ダイアログ</translation>
     </message>
     <message>
-        <source>Dissector Tables</source>
-        <translation>ダイセクター表</translation>
+        <source>Conversation Hash Tables</source>
+        <translation type="unfinished">対話ハッシュ表</translation>
     </message>
 </context>
 <context>
@@ -1718,8 +1763,16 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>このダイセクターの振る舞いをコピーします</translation>
     </message>
     <message>
+        <source>Clear all dissection behaviors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Decode As</source>
         <translation>としてデコード</translation>
+    </message>
+    <message>
+        <source>Open </source>
+        <translation type="unfinished">開く </translation>
     </message>
 </context>
 <context>
@@ -2187,6 +2240,14 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>オブジェクトを探索中</translation>
     </message>
     <message>
+        <source>Text Filter:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Only display entries containing this string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Export</source>
         <translation>エクスポート</translation>
     </message>
@@ -2392,6 +2453,10 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>表示フィルタ</translation>
     </message>
     <message>
+        <source>Open </source>
+        <translation type="unfinished">開く </translation>
+    </message>
+    <message>
         <source>New filter</source>
         <translation>新規フィルタ</translation>
     </message>
@@ -2450,6 +2515,25 @@ PLEASE NOTE: One option MUST be selected.</source>
     </message>
     <message>
         <source>Invalid filter expression.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FilterExpressionToolBar</name>
+    <message>
+        <source>Filter Button Preferences...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation type="unfinished">編集</translation>
+    </message>
+    <message>
+        <source>Disable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2937,10 +3021,6 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>長さ</translation>
     </message>
     <message>
-        <source> (gzip compressed)</source>
-        <translation> (gzip圧縮)</translation>
-    </message>
-    <message>
         <source>Format</source>
         <translation>フォーマット</translation>
     </message>
@@ -3135,6 +3215,10 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Duplicate this graph.</source>
         <translation>このグラフを複製します</translation>
+    </message>
+    <message>
+        <source>Clear all graphs.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -3381,6 +3465,14 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Copy</source>
         <translation>コピー</translation>
+    </message>
+    <message>
+        <source>Copy from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy graphs from another profile.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>1 ms</source>
@@ -3788,6 +3880,14 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Direction indication:</source>
         <translation>方向指示:</translation>
+    </message>
+    <message>
+        <source>ExportPDU</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Payload</source>
+        <translation type="unfinished">ペイロード</translation>
     </message>
     <message>
         <source>Maximum frame length:</source>
@@ -5533,57 +5633,12 @@ PLEASE NOTE: One option MUST be selected.</source>
 </context>
 <context>
     <name>MainWelcome</name>
-    <message>
-        <source>Form</source>
-        <translation type="vanished">フォーム</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Welcome to Wireshark&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Wiresharkへようこそ&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;h2&gt;Open&lt;/h2&gt;</source>
-        <translation type="vanished">&lt;h2&gt;開く&lt;/h2&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Capture live packets from your network.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;ネットワークから現在通信中のパケットをキャプチャします。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;h2&gt;Capture&lt;/h2&gt;</source>
-        <translation type="vanished">&lt;h2&gt;キャプチャ&lt;/h2&gt;</translation>
-    </message>
-    <message>
-        <source>…using this filter:</source>
-        <translation type="vanished">…このフィルタを利用:</translation>
-    </message>
-    <message>
-        <source>&lt;h2&gt;Learn&lt;/h2&gt;</source>
-        <translation type="vanished">&lt;h2&gt;学習&lt;/h2&gt;</translation>
-    </message>
-    <message>
-        <source>You are running Wireshark </source>
-        <translation type="vanished">Wiresharkを起動中です</translation>
-    </message>
-    <message>
-        <source>.</source>
-        <translation type="vanished">.</translation>
-    </message>
-    <message>
-        <source> You receive automatic updates.</source>
-        <translation type="vanished">自動アップデートを受信します</translation>
-    </message>
-    <message>
-        <source> You have disabled automatic updates.</source>
-        <translation type="vanished">自動アップデートを無効にしました</translation>
-    </message>
-    <message>
-        <source>not found</source>
-        <translation type="vanished">見つかりません</translation>
-    </message>
-    <message>
-        <source>Copy file path</source>
-        <translation type="vanished">ファイルパスをコピー</translation>
+    <message numerus="yes">
+        <source>%n interface(s) shown, %1 hidden</source>
+        <oldsource>%Ln interface(s) shown</oldsource>
+        <translation type="obsolete">
+            <numerusform>%n interface shown, %1 hidden</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -5917,6 +5972,10 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>指定したパケットを出力</translation>
     </message>
     <message>
+        <source>Export TLS Session Keys…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>List Files</source>
         <translation>ファイル一覧</translation>
     </message>
@@ -6120,10 +6179,6 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Export Packet &amp;Bytes…</source>
         <translation>パケットバイト列をエクスポート…(&amp;B)</translation>
-    </message>
-    <message>
-        <source>Export SSL Session Keys…</source>
-        <translation>SSLセッション鍵をエクスポート…</translation>
     </message>
     <message>
         <source>&amp;Print…</source>
@@ -6356,6 +6411,10 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>TCP window scaling</source>
         <translation>TCPウインドウスケーリング</translation>
+    </message>
+    <message>
+        <source>TLS Stream</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>HTTP Stream</source>
@@ -6856,10 +6915,6 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>UDP Stream</source>
         <translation>UDPストリーム</translation>
-    </message>
-    <message>
-        <source>SSL Stream</source>
-        <translation>SSLストリーム</translation>
     </message>
     <message>
         <source>Request Sequences</source>
@@ -7390,10 +7445,6 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>現在のキャプチャファイルへパケットをエクスポートすることはできません</translation>
     </message>
     <message>
-        <source>.</source>
-        <translation>.</translation>
-    </message>
-    <message>
         <source>Do you want to save the changes you&apos;ve made%1?</source>
         <oldsource>Do you want to save the captured packets</oldsource>
         <translation>%1 に作成した変更を保存したいですか？</translation>
@@ -7455,10 +7506,6 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>(File name can&apos;t be mapped to UTF-8)</source>
-        <translation>ファイル名をUTF-8形式に割り当てできません</translation>
-    </message>
-    <message>
         <source>The Wireshark Network Analyzer</source>
         <translation>ワイヤーシャークネットワークアナライザ</translation>
     </message>
@@ -7506,14 +7553,10 @@ PLEASE NOTE: One option MUST be selected.</source>
         <source>No Keys</source>
         <translation>キーはありません</translation>
     </message>
-    <message>
-        <source>There are no SSL Session Keys to save.</source>
-        <translation>保存するSSLセッション鍵はありません</translation>
-    </message>
     <message numerus="yes">
         <source>Export SSL Session Keys (%Ln key(s))</source>
         <oldsource>Export SSL Session Keys (%1 key%2</oldsource>
-        <translation>
+        <translation type="vanished">
             <numerusform>SSLセッション鍵をエクスポート(%1 鍵%2</numerusform>
         </translation>
     </message>
@@ -7524,10 +7567,6 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Merging files</source>
         <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>SSL Session Keys (*.keys *.txt);;All Files (</source>
-        <translation>SSLセッション鍵 (*.keys *.txt);;すべてのファイル (</translation>
     </message>
     <message>
         <source>Couldn&apos;t copy text. Try another item.</source>
@@ -7566,6 +7605,20 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>新規キャプチャを開始する前に</translation>
     </message>
     <message>
+        <source>There are no TLS Session Keys to save.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>Export TLS Session Keys (%Ln key(s))</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>TLS Session Keys (*.keys *.txt);;All Files (</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source> before restarting the capture</source>
         <translation>キャプチャを再スタートする前に</translation>
     </message>
@@ -7576,22 +7629,6 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>&lt;p&gt;The Wireshark Wiki is maintained by the community.&lt;/p&gt;&lt;p&gt;The page you are about to load might be wonderful, incomplete, wrong, or nonexistent.&lt;/p&gt;&lt;p&gt;Proceed to the wiki?&lt;/p&gt;</source>
         <translation>&lt;p&gt;ワイヤーシャークWikiはコミュニティによって運営されています &lt;/p&gt;&lt;p&gt;いま見ているページはすばらしかったり、不完全だったり、間違っていたり、存在しないかもしれません。&lt;/p&gt;&lt;p&gt;Wikiに移動しますか？&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>Filter Button Preferences...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Edit</source>
-        <translation type="unfinished">編集</translation>
-    </message>
-    <message>
-        <source>Disable</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Loading</source>
@@ -7652,6 +7689,10 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Confirm unsaved capture files</source>
         <translation>保存していないキャプチャファイルの確認</translation>
+    </message>
+    <message>
+        <source>Display autocompletion for filter text</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Main toolbar style:</source>
@@ -7785,10 +7826,6 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Length</source>
         <translation>長さ</translation>
-    </message>
-    <message>
-        <source> (gzip compressed)</source>
-        <translation> (gzip圧縮)</translation>
     </message>
     <message>
         <source>Format</source>
@@ -8019,6 +8056,10 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Summary line</source>
         <translation>概要行</translation>
+    </message>
+    <message>
+        <source>Include column headings</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Packet details similar to the protocol tree&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -10519,6 +10560,14 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>このパケットに対するアソシエーションは見つかりませんでした</translation>
     </message>
     <message>
+        <source>Warning</source>
+        <translation type="unfinished">警告</translation>
+    </message>
+    <message>
+        <source>Could not find SCTP Association with id: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Complete list of IP-Addresses as provided in the INIT-Chunk</source>
         <translation>INITチャンクで提供されたIPアドレスの完全な一覧</translation>
     </message>
@@ -10699,6 +10748,10 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>SCTPグラフ</translation>
     </message>
     <message>
+        <source>Relative TSNs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Only SACKs</source>
         <translation>SACKのみ</translation>
     </message>
@@ -10713,10 +10766,6 @@ PLEASE NOTE: One option MUST be selected.</source>
     <message>
         <source>Reset to full size</source>
         <translation>最大サイズにリセット</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Save Graph</source>
@@ -11493,7 +11542,7 @@ PLEASE NOTE: One option MUST be selected.</source>
 <context>
     <name>SyntaxLineEdit</name>
     <message>
-        <source>&quot;%1&quot; may have unexpected results (see the User&apos;s Guide)</source>
+        <source>&quot;%1&quot; is deprecated or may have unexpected results. See the User&apos;s Guide.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -12292,6 +12341,14 @@ PLEASE NOTE: One option MUST be selected.</source>
         <translation>ユーザがアクセスできる表が不明</translation>
     </message>
     <message>
+        <source>Copy from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy entries from another profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open </source>
         <translation>開く </translation>
     </message>
@@ -12324,6 +12381,14 @@ PLEASE NOTE: One option MUST be selected.</source>
     </message>
     <message>
         <source>Clear all entries.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy entries from another profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy from</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -12465,7 +12530,7 @@ PLEASE NOTE: One option MUST be selected.</source>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Welcome to Wireshark&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:large;&quot;&gt;Wiresharkへようこそ&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Open a file on your file system&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -12473,7 +12538,7 @@ PLEASE NOTE: One option MUST be selected.</source>
     </message>
     <message>
         <source>&lt;h2&gt;Open&lt;/h2&gt;</source>
-        <translation type="unfinished">&lt;h2&gt;開く&lt;/h2&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Recent capture files</source>
@@ -12485,15 +12550,15 @@ PLEASE NOTE: One option MUST be selected.</source>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Capture live packets from your network.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;ネットワークから現在通信中のパケットをキャプチャします。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;h2&gt;Capture&lt;/h2&gt;</source>
-        <translation type="unfinished">&lt;h2&gt;キャプチャ&lt;/h2&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>…using this filter:</source>
-        <translation type="unfinished">…このフィルタを利用:</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Interface list</source>
@@ -12505,7 +12570,7 @@ PLEASE NOTE: One option MUST be selected.</source>
     </message>
     <message>
         <source>&lt;h2&gt;Learn&lt;/h2&gt;</source>
-        <translation type="unfinished">&lt;h2&gt;学習&lt;/h2&gt;</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head&gt;
@@ -12556,7 +12621,7 @@ a:hover {
     <message numerus="yes">
         <source>%n interface(s) shown, %1 hidden</source>
         <translation type="unfinished">
-            <numerusform></numerusform>
+            <numerusform>%n interface shown, %1 hidden</numerusform>
         </translation>
     </message>
     <message>
@@ -12565,27 +12630,23 @@ a:hover {
     </message>
     <message>
         <source>You are running Wireshark </source>
-        <translation type="unfinished">Wiresharkを起動中です</translation>
-    </message>
-    <message>
-        <source>.</source>
-        <translation type="unfinished">.</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source> You receive automatic updates.</source>
-        <translation type="unfinished">自動アップデートを受信します</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source> You have disabled automatic updates.</source>
-        <translation type="unfinished">自動アップデートを無効にしました</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>not found</source>
-        <translation type="unfinished">見つかりません</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Copy file path</source>
-        <translation type="unfinished">ファイルパスをコピー</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Remove</source>

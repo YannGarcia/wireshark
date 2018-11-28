@@ -769,6 +769,7 @@ File "${STAGING_DIR}\radius\dictionary.usr"
 File "${STAGING_DIR}\radius\dictionary.utstarcom"
 File "${STAGING_DIR}\radius\dictionary.valemount"
 File "${STAGING_DIR}\radius\dictionary.versanet"
+File "${STAGING_DIR}\radius\dictionary.verizon"
 File "${STAGING_DIR}\radius\dictionary.vqp"
 File "${STAGING_DIR}\radius\dictionary.walabi"
 File "${STAGING_DIR}\radius\dictionary.waverider"
@@ -1025,6 +1026,8 @@ SetOutPath '$INSTDIR\profiles\Bluetooth'
 File "${STAGING_DIR}\profiles\Bluetooth\colorfilters"
 SetOutPath '$INSTDIR\profiles\Classic'
 File "${STAGING_DIR}\profiles\Classic\colorfilters"
+SetOutPath '$INSTDIR\profiles\No Reassembly'
+File "${STAGING_DIR}\profiles\No Reassembly\preferences"
 SectionEnd
 
 !ifdef SMI_DIR

@@ -77,12 +77,6 @@ wtap_file_type_subtype(wtap *wth)
 	return wth->file_type_subtype;
 }
 
-gboolean
-wtap_iscompressed(wtap *wth)
-{
-	return file_iscompressed((wth->fh == NULL) ? wth->random_fh : wth->fh);
-}
-
 guint
 wtap_snapshot_length(wtap *wth)
 {
@@ -203,6 +197,13 @@ wtap_get_debug_if_descr(const wtap_block_t if_descr,
 			wtap_encap_short_string(if_descr_mand->wtap_encap),
 			line_end);
 
+	if (wtap_block_get_string_option_value(if_descr, OPT_IDB_HARDWARE, &tmp_content) == WTAP_OPTTYPE_SUCCESS) {
+		g_string_append_printf(info,
+				"%*cHardware = %s%s", indent, ' ',
+				tmp_content ? tmp_content : "NONE",
+				line_end);
+	}
+
 	if (wtap_block_get_uint64_option_value(if_descr, OPT_IDB_SPEED, &tmp64) == WTAP_OPTTYPE_SUCCESS) {
 		g_string_append_printf(info,
 				"%*cSpeed = %" G_GINT64_MODIFIER "u%s", indent, ' ',
@@ -306,6 +307,34 @@ wtap_file_get_nrb_for_new_file(wtap *wth)
 	}
 
 	return nrb_hdrs;
+}
+
+void
+wtap_dump_params_init(wtap_dump_params *params, wtap *wth)
+{
+	memset(params, 0, sizeof(*params));
+	if (wth == NULL)
+		return;
+
+	params->encap = wtap_file_encap(wth);
+	params->snaplen = wtap_snapshot_length(wth);
+	params->shb_hdrs = wtap_file_get_shb_for_new_file(wth);
+	params->idb_inf = wtap_file_get_idb_info(wth);
+	params->nrb_hdrs = wtap_file_get_nrb_for_new_file(wth);
+	/* Assume that the input handle remains open until the dumper is closed.
+	 * Refer to the DSBs from the input file, wtap_dump will then copy DSBs
+	 * as they become available. */
+	params->dsbs_growing = wth ? wth->dsbs : NULL;
+}
+
+void
+wtap_dump_params_cleanup(wtap_dump_params *params)
+{
+	wtap_block_array_free(params->shb_hdrs);
+	/* params->idb_inf is currently expected to be freed by the caller. */
+	wtap_block_array_free(params->nrb_hdrs);
+
+	memset(params, 0, sizeof(*params));
 }
 
 /* Table of the encapsulation types we know about. */
@@ -917,6 +946,15 @@ static struct encap_type_info encap_table_base[] = {
 
 	/* WTAP_ENCAP_DPAUXMON */
 	{ "DisplayPort AUX channel with Unigraf pseudo-header", "dpauxmon" },
+
+	/* WTAP_ENCAP_RUBY_MARSHAL */
+	{ "Ruby marshal object", "ruby_marshal" },
+
+	/* WTAP_ENCAP_RFC7468 */
+	{ "RFC 7468 file", "rfc7468" },
+
+	/* WTAP_ENCAP_SYSTEMD_JOURNAL */
+	{ "systemd journal", "sdjournal" }
 };
 
 WS_DLL_LOCAL
@@ -1199,6 +1237,7 @@ wtap_close(wtap *wth)
 	wtap_block_array_free(wth->shb_hdrs);
 	wtap_block_array_free(wth->nrb_hdrs);
 	wtap_block_array_free(wth->interface_data);
+	wtap_block_array_free(wth->dsbs);
 
 	g_free(wth);
 }
@@ -1217,6 +1256,11 @@ void wtap_set_cb_new_ipv4(wtap *wth, wtap_new_ipv4_callback_t add_new_ipv4) {
 void wtap_set_cb_new_ipv6(wtap *wth, wtap_new_ipv6_callback_t add_new_ipv6) {
 	if (wth)
 		wth->add_new_ipv6 = add_new_ipv6;
+}
+
+void wtap_set_cb_new_secrets(wtap *wth, wtap_new_secrets_callback_t add_new_secrets) {
+	if (wth)
+		wth->add_new_secrets = add_new_secrets;
 }
 
 gboolean
@@ -1432,6 +1476,95 @@ wtap_seek_read(wtap *wth, gint64 seek_off, wtap_rec *rec, Buffer *buf,
 	}
 
 	return TRUE;
+}
+
+static gboolean
+wtap_full_file_read_file(wtap *wth, FILE_T fh, wtap_rec *rec, Buffer *buf, int *err, gchar **err_info)
+{
+	gint64 file_size;
+	int packet_size = 0;
+	const int block_size = 1024 * 1024;
+
+	if ((file_size = wtap_file_size(wth, err)) == -1)
+		return FALSE;
+
+	if (file_size > G_MAXINT) {
+		/*
+		 * Avoid allocating space for an immensely-large file.
+		 */
+		*err = WTAP_ERR_BAD_FILE;
+		*err_info = g_strdup_printf("%s: File has %" G_GINT64_MODIFIER "d-byte packet, bigger than maximum of %u",
+				wtap_encap_short_string(wth->file_encap), file_size, G_MAXINT);
+		return FALSE;
+	}
+
+	/*
+	 * Compressed files might expand to a larger size than the actual file
+	 * size. Try to read the full size and then read in smaller increments
+	 * to avoid frequent memory reallocations.
+	 */
+	int buffer_size = block_size * (1 + (int)file_size / block_size);
+	for (;;) {
+		if (buffer_size <= 0) {
+			*err = WTAP_ERR_BAD_FILE;
+			*err_info = g_strdup_printf("%s: Uncompressed file is bigger than maximum of %u",
+					wtap_encap_short_string(wth->file_encap), G_MAXINT);
+			return FALSE;
+		}
+		ws_buffer_assure_space(buf, buffer_size);
+		int nread = file_read(ws_buffer_start_ptr(buf) + packet_size, buffer_size - packet_size, fh);
+		if (nread < 0) {
+			*err = file_error(fh, err_info);
+			if (*err == 0)
+				*err = WTAP_ERR_BAD_FILE;
+			return FALSE;
+		}
+		packet_size += nread;
+		if (packet_size != buffer_size) {
+			/* EOF */
+			break;
+		}
+		buffer_size += block_size;
+	}
+
+	rec->rec_type = REC_TYPE_PACKET;
+	rec->presence_flags = 0; /* yes, we have no bananas^Wtime stamp */
+	rec->ts.secs = 0;
+	rec->ts.nsecs = 0;
+	rec->rec_header.packet_header.caplen = packet_size;
+	rec->rec_header.packet_header.len = packet_size;
+
+	return TRUE;
+}
+
+gboolean
+wtap_full_file_read(wtap *wth, int *err, gchar **err_info, gint64 *data_offset)
+{
+	gint64 offset = file_tell(wth->fh);
+
+	/* There is only one packet with the full file contents. */
+	if (offset != 0) {
+		*err = 0;
+		return FALSE;
+	}
+
+	*data_offset = offset;
+	return wtap_full_file_read_file(wth, wth->fh, &wth->rec, wth->rec_data, err, err_info);
+}
+
+gboolean
+wtap_full_file_seek_read(wtap *wth, gint64 seek_off, wtap_rec *rec, Buffer *buf, int *err, gchar **err_info)
+{
+	/* There is only one packet with the full file contents. */
+	if (seek_off > 0) {
+		*err = 0;
+		return FALSE;
+	}
+
+	if (file_seek(wth->random_fh, seek_off, SEEK_SET, err) == -1)
+		return FALSE;
+
+	return wtap_full_file_read_file(wth, wth->random_fh, rec, buf, err, err_info);
 }
 
 /*

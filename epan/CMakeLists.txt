@@ -133,6 +133,7 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	rtd_table.h
 	rtp_pt.h
 	sctpppids.h
+	secrets.h
 	show_exception.h
 	slow_protocol_subtypes.h
 	sminmpec.h
@@ -221,6 +222,7 @@ set(LIBWIRESHARK_NONGENERATED_FILES
 	register.c
 	req_resp_hdrs.c
 	rtd_table.c
+	secrets.c
 	sequence_analysis.c
 	show_exception.c
 	srt_table.c
@@ -263,29 +265,6 @@ add_lemon_files(LEMON_FILES LIBWIRESHARK_FILES
 	dtd_grammar.lemon
 )
 
-set(epan_LIBS
-	wiretap
-	wsutil
-	${CARES_LIBRARIES}
-	${GCRYPT_LIBRARIES}
-	#${GEOIP_LIBRARIES}
-	${GLIB2_LIBRARIES}
-	${GIO2_LIBRARIES}
-	${GTHREAD2_LIBRARIES}
-	${GNUTLS_LIBRARIES}
-	${KERBEROS_LIBRARIES}
-	${LUA_LIBRARIES}
-	${LZ4_LIBRARIES}
-	${M_LIBRARIES}
-	${NGHTTP2_LIBRARIES}
-	${PCAP_LIBRARIES}
-	${SMI_LIBRARIES}
-	${SNAPPY_LIBRARIES}
-	${WIN_PSAPI_LIBRARY}
-	${LIBXML2_LIBRARIES}
-	${JSONGLIB_LIBRARIES}
-)
-
 set_source_files_properties(
 	${LIBWIRESHARK_FILES}
 	PROPERTIES
@@ -306,18 +285,27 @@ add_library(epan
 
 add_dependencies(epan version)
 
-set(FULL_SO_VERSION "0.0.0")
+if(ENABLE_PLUGINS)
+	target_compile_definitions(epan PUBLIC HAVE_PLUGINS)
+endif()
 
 set_target_properties(epan PROPERTIES
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
 	LINK_FLAGS "${WS_LINK_FLAGS}"
-	VERSION ${FULL_SO_VERSION} SOVERSION 0
+	VERSION "0.0.0" SOVERSION 0
 )
 
 if(ENABLE_APPLICATION_BUNDLE)
-	set_target_properties(epan PROPERTIES
-		LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
-	)
+	if(NOT CMAKE_CFG_INTDIR STREQUAL ".")
+		# Xcode
+		set_target_properties(epan PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/$<CONFIG>/Wireshark.app/Contents/Frameworks
+		)
+	else()
+		set_target_properties(epan PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
+		)
+	endif()
 endif()
 
 ABICHECK(libwireshark)
@@ -369,21 +357,49 @@ set_target_properties(epan PROPERTIES
 	FOLDER "DLLs"
 )
 
-target_link_libraries(epan ${epan_LIBS})
+target_link_libraries(epan
+	PUBLIC
+		wiretap
+		wsutil
+		${GLIB2_LIBRARIES}
+	PRIVATE
+		${CARES_LIBRARIES}
+		${GCRYPT_LIBRARIES}
+		${GIO2_LIBRARIES}
+		${GTHREAD2_LIBRARIES}
+		${GNUTLS_LIBRARIES}
+		${KERBEROS_LIBRARIES}
+		${LUA_LIBRARIES}
+		${LZ4_LIBRARIES}
+		${M_LIBRARIES}
+		${NGHTTP2_LIBRARIES}
+		${PCAP_LIBRARIES}
+		${SMI_LIBRARIES}
+		${SNAPPY_LIBRARIES}
+		${WIN_PSAPI_LIBRARY}
+		${LIBXML2_LIBRARIES}
+)
+
+target_include_directories(epan
+	INTERFACE
+	$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+	$<INSTALL_INTERFACE:include/wireshark>
+	PUBLIC
+	${GLIB2_INCLUDE_DIRS}
+)
 
 add_dependencies(epan lemon)
 
 install(TARGETS epan
+	EXPORT WiresharkTargets
+	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-if(NOT WIN32)
-	install(FILES ${LIBWIRESHARK_PUBLIC_HEADERS}
-		DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan"
-	)
-endif()
+install(FILES ${LIBWIRESHARK_PUBLIC_HEADERS}
+	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan"
+)
 
 add_executable(exntest EXCLUDE_FROM_ALL exntest.c except.c)
 target_link_libraries(exntest ${GLIB2_LIBRARIES})
@@ -420,7 +436,7 @@ CHECKAPI(
 	NAME
 	  epan
 	SWITCHES
-	  -g termoutput -build
+	  --group termoutput:10 --summary-group termoutput --build
 	SOURCES
 	  ${LIBWIRESHARK_NONGENERATED_FILES}
 )

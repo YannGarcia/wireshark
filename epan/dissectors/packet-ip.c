@@ -737,7 +737,7 @@ ip_fixed_option_header(proto_tree* tree, packet_info *pinfo, tvbuff_t *tvb, int 
     expert_add_info_format(pinfo, tf, &ei_ip_opt_len_invalid,
                             "%s (with option length = %u byte%s; should be %u)",
                             proto_get_protocol_short_name(find_protocol_by_id(proto)),
-                            len, plurality(len, "", "s"), optlen);
+                            optlen, plurality(optlen, "", "s"), len);
   }
 
   return field_tree;
@@ -931,7 +931,7 @@ dissect_ipopt_cipso(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void * 
   guint      tagtype, taglen;
   gint       offset = 2,
              optlen = tvb_reported_length(tvb);
-  int        offset_max = offset + optlen;
+  int        offset_max = optlen;
 
   field_tree = ip_var_option_header(tree, pinfo, tvb, proto_ip_option_cipso, ett_ip_option_cipso, &tf, optlen);
 
@@ -3028,6 +3028,7 @@ proto_reg_handoff_ip(void)
   dissector_add_uint("juniper.proto", JUNIPER_PROTO_IP, ip_handle);
   dissector_add_uint("juniper.proto", JUNIPER_PROTO_MPLS_IP, ip_handle);
   dissector_add_uint("pwach.channel_type", PW_ACH_TYPE_IPV4, ip_handle);
+  dissector_add_uint("mcc.proto", PW_ACH_TYPE_IPV4, ip_handle);
   dissector_add_uint("sflow_245.header_protocol", SFLOW_245_HEADER_IPv4, ip_handle);
   dissector_add_uint("l2tp.pw_type", L2TPv3_PROTOCOL_IP, ip_handle);
   dissector_add_for_decode_as_with_preference("udp.port", ip_handle);

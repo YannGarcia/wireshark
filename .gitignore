@@ -46,10 +46,7 @@ plugins/epan/*/plugin.c
 plugins/wiretap/*/plugin.c
 plugins/codecs/*/plugin.c
 plugins/epan/mate/mate_parser.c
-version.h
 tools/lemon/lemon
-tools/make-dissectors
-tools/make-taps
 tshark-tap-register.c
 wiretap/ascend.c
 wiretap/ascend.h
@@ -59,6 +56,7 @@ wireshark-tap-register.c
 
 # CMake #
 ##################
+cmake-build-*/
 CMakeCache.txt
 CMakeFiles
 CMakeLists.txt.user*
@@ -157,11 +155,13 @@ doc/ws.css
 packaging/nsis/all-manifest.nsh
 /packaging/portableapps/WiresharkPortable/
 /zlib/
+wireshark-win??-libs*/
 
 # Misc #
 ########
 .vagrant
 .vscode
+.idea
 *.swp
 *~
 .DS_Store

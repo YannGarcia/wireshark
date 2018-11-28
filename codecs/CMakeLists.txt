@@ -54,13 +54,11 @@ add_library(wscodecs
   ${CMAKE_BINARY_DIR}/image/libwscodecs.rc
 )
 
-set(FULL_SO_VERSION "0.0.0")
-
 set_target_properties(wscodecs PROPERTIES
   PREFIX "lib"
   COMPILE_DEFINITIONS "WS_BUILD_DLL"
   LINK_FLAGS "${WS_LINK_FLAGS}"
-  VERSION ${FULL_SO_VERSION} SOVERSION 0
+  VERSION "0.0.0" SOVERSION 0
   FOLDER "DLLs"
 )
 
@@ -68,21 +66,29 @@ if(ENABLE_APPLICATION_BUNDLE)
   set_target_properties(wscodecs PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
   )
+  if(NOT CMAKE_CFG_INTDIR STREQUAL ".")
+    # Xcode
+    set_target_properties(wscodecs PROPERTIES
+      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/$<CONFIG>/Wireshark.app/Contents/Frameworks
+    )
+  else()
+    set_target_properties(wscodecs PROPERTIES
+      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
+    )
+  endif()
 endif()
 
 target_link_libraries(wscodecs ${wscodecs_LIBS})
 
 install(TARGETS wscodecs
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-if(NOT WIN32)
-  install(FILES ${WSCODECS_PUBLIC_HEADERS}
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/codecs"
-  )
-endif()
+install(FILES ${WSCODECS_PUBLIC_HEADERS}
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/codecs"
+)
 
 CHECKAPI(
 	NAME
