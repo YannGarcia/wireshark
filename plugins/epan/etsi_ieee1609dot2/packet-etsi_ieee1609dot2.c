@@ -314,7 +314,6 @@ sha256(const unsigned char* p_data, const size_t p_data_length) {
 
   return ret_value;
 }
-
 static int
 compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_key_size, const int p_comp_mode, const char* p_curve, const char* p_algo, gcry_sexp_t* p_key) {
   unsigned char* x_buffer = NULL;
@@ -333,14 +332,12 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   gcry_error_t rc;
 
   printf(">>> compressed_hex_key_to_sexp: %zu - %d - %s - %s\n", p_comp_key_size, p_comp_mode, p_curve, p_algo);
-  show_hex(">> compressed_hex_key_to_sexp: ", p_comp_key, p_comp_key_size);
   
   /* Extract (p, a, b) parameters from elliptic curve */
   if ((rc = gcry_sexp_build (&keyparm, NULL, "(genkey(ecc(curve %s)(flags param)))", p_curve)) != 0) {
     printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
     return -1;
   }
-  show_sexp("keyparm: ", keyparm);
   if ((rc = gcry_pk_genkey(&key, keyparm)) != 0) {
     printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
     return -2;
@@ -404,7 +401,6 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   gcry_mpi_release(x_3);
   gcry_mpi_release(axb);
   gcry_mpi_release(x);
-  show_mpi("y_2", "", y_2);
 
   /**
    * Compute sqrt(y^2): two solutions
@@ -419,7 +415,6 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   gcry_mpi_div(q, r, p_plus_1, four, 0);
   gcry_mpi_release(p_plus_1);
   gcry_mpi_powm(y_prime, y_2, q, p);
-  show_mpi("y'", "", y_prime);
   gcry_mpi_release(four);
   gcry_mpi_release(q);
   gcry_mpi_release(r);
@@ -433,12 +428,10 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   } else {
     y_s = gcry_mpi_new (0);
     gcry_mpi_subm(y_s, p, y_prime, p); /* y_s = p - y_prime (mod p) */
-    show_mpi("y_s= ", "", y_s);
     gcry_mpi_add_ui(y, y_s, 0);  // y = p-y'
     gcry_mpi_release(y_s);
   }
   gcry_mpi_release(y_prime);
-  show_mpi("y= ", "", y);
   
   //show_hex(x_buffer, buffer_size, "x_buffer="),
   y_buffer = (unsigned char*)gcry_malloc(buffer_size);
@@ -467,7 +460,6 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
       return -12;
     }
   }
-  show_sexp("compressed_hex_key_to_sexp: p_key=", *p_key);
   
   /* Release resources */
   gcry_free(x_buffer);

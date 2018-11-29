@@ -381,15 +381,16 @@ static int hf_gn_st_opaque = -1;
 typedef struct { 
   guint8 sign_algo; /* 0: Nist P-256, 1: Brainpool P-256 r1, 2:Brainpool P-384 r1 */
   guint8 sign_compressed_key_mode; /* 0: compressed_y_0, 1: compressed_y_1 */
-  size_t to_be_signed_length;
-  size_t issuer_length;
-  gchar* sign_public_compressed_key;
+  size_t to_be_signed_length; /* ToBeSigned payload length */
+  size_t issuer_length; /* Issuer payload lenght */
+  gchar* sign_public_compressed_key; 
   gchar* to_be_signed;
   gchar* issuer; /* The SHA of the whole certificate */
-  gchar* sign_x;
-  gchar* sign_y;
+  gchar* sign_r;
+  gchar* sign_s;
+  proto_item *sh_ti;
 } sign_record_t;
-static sign_record_t g_sign_record = { 0xff, 0xff, 0, 0, NULL, NULL, NULL, NULL, NULL };
+static sign_record_t g_sign_record = { 0xff, 0xff, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL };
 
 typedef struct gn_common_options {
   gboolean enable_verify_sign;
@@ -758,14 +759,12 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   gcry_error_t rc;
 
   printf(">>> compressed_hex_key_to_sexp: %zu - %d - %s - %s\n", p_comp_key_size, p_comp_mode, p_curve, p_algo);
-  show_hex(">> compressed_hex_key_to_sexp: ", p_comp_key, p_comp_key_size);
   
   /* Extract (p, a, b) parameters from elliptic curve */
   if ((rc = gcry_sexp_build (&keyparm, NULL, "(genkey(ecc(curve %s)(flags param)))", p_curve)) != 0) {
     printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
     return -1;
   }
-  show_sexp("keyparm: ", keyparm);
   if ((rc = gcry_pk_genkey(&key, keyparm)) != 0) {
     printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
     return -2;
@@ -829,7 +828,6 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   gcry_mpi_release(x_3);
   gcry_mpi_release(axb);
   gcry_mpi_release(x);
-  show_mpi("y_2", "", y_2);
 
   /**
    * Compute sqrt(y^2): two solutions
@@ -844,7 +842,6 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   gcry_mpi_div(q, r, p_plus_1, four, 0);
   gcry_mpi_release(p_plus_1);
   gcry_mpi_powm(y_prime, y_2, q, p);
-  show_mpi("y'", "", y_prime);
   gcry_mpi_release(four);
   gcry_mpi_release(q);
   gcry_mpi_release(r);
@@ -858,12 +855,10 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   } else {
     y_s = gcry_mpi_new (0);
     gcry_mpi_subm(y_s, p, y_prime, p); /* y_s = p - y_prime (mod p) */
-    show_mpi("y_s= ", "", y_s);
     gcry_mpi_add_ui(y, y_s, 0);  // y = p-y'
     gcry_mpi_release(y_s);
   }
   gcry_mpi_release(y_prime);
-  show_mpi("y= ", "", y);
   
   //show_hex(x_buffer, buffer_size, "x_buffer="),
   y_buffer = (unsigned char*)gcry_malloc(buffer_size);
@@ -892,7 +887,6 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
       return -12;
     }
   }
-  show_sexp("compressed_hex_key_to_sexp: p_key=", *p_key);
   
   /* Release resources */
   gcry_free(x_buffer);
@@ -908,23 +902,6 @@ static void etsi_gn_cleanup(void)
   
   if (g_sign_record.sign_algo != 0xff) {
     g_sign_record.sign_algo = 0xff;
-    /* FIXME wmem_free generate a trap :(
-    if (g_sign_record.sign_compressed_key != NULL) {
-      wmem_free(wmem_packet_scope(), g_sign_record.sign_compressed_key);
-      g_sign_record.sign_compressed_key = NULL;
-    }
-    if (g_sign_record.nonce != NULL) {
-      wmem_free(wmem_packet_scope(), g_sign_record.nonce);
-      g_sign_record.nonce = NULL;
-    }
-    if (g_sign_record.tag != NULL) {
-      wmem_free(wmem_packet_scope(), g_sign_record.tag);
-      g_sign_record.tag = NULL;
-    }
-    if (g_sign_record.encrypted_aes_symmetric_key != NULL) {
-      wmem_free(wmem_packet_scope(), g_sign_record.encrypted_aes_symmetric_key);
-      g_sign_record.encrypted_aes_symmetric_key = NULL;
-      }*/
   }
 }
 
@@ -933,11 +910,6 @@ etsi_gn_cleanup_protocol(void)
 {
   printf(">>> etsi_gn_cleanup_protocol\n");  
 }
-
-
-
-
-
 
 static gint32
 dissect_var_val (tvbuff_t *tvb, 
@@ -3156,8 +3128,8 @@ dissect_ieee1609dot2_eccP256CurvePoint_r_sig(tvbuff_t *tvb, packet_info *pinfo, 
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_r_sig, tvb, offset, 32, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_r_sig);
     
-    g_sign_record.sign_x = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
-    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset + 1, 32);
+    g_sign_record.sign_r = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_r, offset + 1, 32);
     offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf, ett_1609dot2_r_sig);
   }
 
@@ -3177,8 +3149,8 @@ dissect_ieee1609dot2_eccP384CurvePoint_r_sig(tvbuff_t *tvb, packet_info *pinfo, 
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_r_sig, tvb, offset, 48, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_r_sig);
     
-    g_sign_record.sign_x = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
-    tvb_memcpy(tvb, (char*)g_sign_record.sign_x, offset + 1, 48);
+    g_sign_record.sign_r = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_r, offset + 1, 48);
     offset = dissect_ieee1609dot2_eccP384CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf, ett_1609dot2_r_sig);
   }
 
@@ -3200,12 +3172,13 @@ dissect_ieee1609dot2_ecdsaNistP256Signature_packet(tvbuff_t *tvb, packet_info *p
     sh_length = offset;
     sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
+    g_sign_record.sh_ti = sh_ti;
 
     // EccP256CurvePoint
     offset = dissect_ieee1609dot2_eccP256CurvePoint_r_sig(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_nistp_256);
     // OCTET STRING (SIZE (32))
-    g_sign_record.sign_y = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
-    tvb_memcpy(tvb, (char*)g_sign_record.sign_y, offset, 32);
+    g_sign_record.sign_s = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_s, offset, 32);
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 32, FALSE);
     offset += 32;
 
@@ -3230,12 +3203,13 @@ dissect_ieee1609dot2_ecdsaBrainpoolP256Signature_packet(tvbuff_t *tvb, packet_in
     sh_length = offset;
     sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
+    g_sign_record.sh_ti = sh_ti;
 
     // EccP256CurvePoint
     offset = dissect_ieee1609dot2_eccP256CurvePoint_r_sig(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_brainpoolp_256);
     // OCTET STRING (SIZE (32))
-    g_sign_record.sign_y = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
-    tvb_memcpy(tvb, (char*)g_sign_record.sign_y, offset, 32);
+    g_sign_record.sign_s = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_s, offset, 32);
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 32, FALSE);
     offset += 32;
 
@@ -3260,12 +3234,13 @@ dissect_ieee1609dot2_ecdsaBrainpoolP384Signature_packet(tvbuff_t *tvb, packet_in
     sh_length = offset;
     sh_ti = proto_tree_add_item(tree, hf, tvb, offset, sh_length, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
+    g_sign_record.sh_ti = sh_ti;
 
     // EccP384CurvePoint
     offset = dissect_ieee1609dot2_eccP384CurvePoint_r_sig(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_brainpoolp_384);
     // OCTET STRING (SIZE (48))
-    g_sign_record.sign_y = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
-    tvb_memcpy(tvb, (char*)g_sign_record.sign_y, offset, 48);
+    g_sign_record.sign_s = (gchar*)wmem_alloc(wmem_packet_scope(), 48);
+    tvb_memcpy(tvb, (char*)g_sign_record.sign_s, offset, 48);
     proto_tree_add_item(sh_tree, hf_1609dot2_s_sig, tvb, offset, 48, FALSE);
     offset += 48;
 
@@ -3290,7 +3265,7 @@ dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_t
     sh_length = offset;
     sh_ti = proto_tree_add_item(tree, hf, tvb, offset, -1, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signer_identifier_packet);
-
+    
     /* Sequence Tag */
     tag = tvb_get_guint8(tvb, offset);
     printf("dissect_ieee1609dot2_signature_packet: tag: '%x'\n", tag);
@@ -4237,8 +4212,6 @@ static void
 ieee1609dot2_verify_signature(tvbuff_t *tvb _U_, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
   printf(">>> ieee1609dot2_verify_signature\n");
-  printf("ieee1609dot2_verify_signature: algo: %02x\n", g_sign_record.sign_algo);
-  printf("ieee1609dot2_verify_signature: comp.mode: %02x\n", g_sign_record.sign_compressed_key_mode);
 
   if (g_sign_record.sign_public_compressed_key != NULL) {
     char* curve = NULL;
@@ -4251,12 +4224,6 @@ ieee1609dot2_verify_signature(tvbuff_t *tvb _U_, packet_info *pinfo, proto_tree 
     unsigned char* hash_data = NULL;
     unsigned char* hash_signer = NULL;
     unsigned char* hash_signature = NULL;
-    
-    show_hex("ieee1609dot2_verify_signature: sign_public_compressed_key: ", g_sign_record.sign_public_compressed_key, 32);
-    show_hex("ieee1609dot2_verify_signature: toBeSigned: ", g_sign_record.to_be_signed, g_sign_record.to_be_signed_length);
-    show_hex("Certificate: ", g_sign_record.issuer, g_sign_record.issuer_length);
-    show_hex("ieee1609dot2_verify_signature: sign_x: ", g_sign_record.sign_x, 32);
-    show_hex("ieee1609dot2_verify_signature: sign_y: ", g_sign_record.sign_y, 32);
     
     switch (g_sign_record.sign_algo) {
     case 0x00: /* Nist P-256 */
@@ -4278,16 +4245,14 @@ ieee1609dot2_verify_signature(tvbuff_t *tvb _U_, packet_info *pinfo, proto_tree 
       col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Cannot not verify signature");
       goto ieee1609dot2_verify_signature_end;
     }
-    show_sexp("ieee1609dot2_verify_signature: gcry_sexp_key: ", gcry_sexp_key);
     // Request for signature
-    if ((rc = gcry_sexp_build(&gcry_sexp_sign_key, NULL, "(sig-val(ecdsa(r %b)(s %b)))", key_length, g_sign_record.sign_x, key_length, g_sign_record.sign_y)) != 0) {
+    if ((rc = gcry_sexp_build(&gcry_sexp_sign_key, NULL, "(sig-val(ecdsa(r %b)(s %b)))", key_length, g_sign_record.sign_r, key_length, g_sign_record.sign_s)) != 0) {
       printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
       gcry_sexp_release(gcry_sexp_key);
       col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Cannot not verify signature");
       goto ieee1609dot2_verify_signature_end;
     }
-    show_sexp("ieee1609dot2_verify_signature: gcry_sexp_sign_key: ", gcry_sexp_sign_key);
-    hash_len = 32;
+    hash_len = 32; /* Signature witheither Nist P-256 or Brainpool P-256 r1 ==> haf is 32 bytes length */
     hash_data = sha256(g_sign_record.to_be_signed, g_sign_record.to_be_signed_length);
     hash_signer = sha256(g_sign_record.issuer, g_sign_record.issuer_length);
     hash_signature = (unsigned char*)gcry_malloc(2 * hash_len);
@@ -4306,16 +4271,15 @@ ieee1609dot2_verify_signature(tvbuff_t *tvb _U_, packet_info *pinfo, proto_tree 
     gcry_free(hash_data);
     gcry_free(hash_signer);
     gcry_free(hash_signature);
-    show_sexp("ieee1609dot2_verify_signature: gcry_sexp_sign_message: ", gcry_sexp_sign_message);
     if ((rc = gcry_pk_verify(gcry_sexp_sign_key, gcry_sexp_sign_message, gcry_sexp_key)) != 0) {
-      //expert_field ef = { PI_SECURITY, PI_WARN };
+      expert_field ef = { PI_PROTOCOL, PI_NOTE };
       
       printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
       gcry_sexp_release(gcry_sexp_key);
       gcry_sexp_release(gcry_sexp_sign_key);
       gcry_sexp_release(gcry_sexp_sign_message);
       col_append_str(pinfo->cinfo, COL_INFO, "[Secured]: Signature cannot be verified");
-      //expert_add_info_format(pinfo, NULL, &ef, "Signature cannot be verified");
+      expert_add_info_format(pinfo, g_sign_record.sh_ti, &ef, "Signature cannot be verified");
 
       goto ieee1609dot2_verify_signature_end;
     }
@@ -4349,13 +4313,13 @@ ieee1609dot2_verify_signature(tvbuff_t *tvb _U_, packet_info *pinfo, proto_tree 
     g_sign_record.to_be_signed = NULL;
   }
   g_sign_record.to_be_signed_length = 0;
-  if (g_sign_record.sign_x != NULL) {
-    wmem_free(wmem_packet_scope(), g_sign_record.sign_x);
-    g_sign_record.sign_x = NULL;
+  if (g_sign_record.sign_r != NULL) {
+    wmem_free(wmem_packet_scope(), g_sign_record.sign_r);
+    g_sign_record.sign_r = NULL;
   }
-  if (g_sign_record.sign_y != NULL) {
-    wmem_free(wmem_packet_scope(), g_sign_record.sign_y);
-    g_sign_record.sign_y = NULL;
+  if (g_sign_record.sign_s != NULL) {
+    wmem_free(wmem_packet_scope(), g_sign_record.sign_s);
+    g_sign_record.sign_s = NULL;
   }
 }
 
