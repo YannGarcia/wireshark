@@ -322,18 +322,20 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   unsigned char* xy_buffer = NULL;
   size_t buffer_size;
   gcry_sexp_t keyparm = NULL;
-  gcry_sexp_t key = NULL, private_key = NULL, e_key = NULL;
+  gcry_sexp_t key = NULL;
+  gcry_sexp_t private_key = NULL;
+  gcry_sexp_t e_key = NULL;
   
   gcry_ctx_t ctx = NULL;
-  gcry_mpi_t a, b, p, p_plus_1, p_minus_5, x, q, r;
-  gcry_mpi_t two, three, four, x_3, axb, y_2, y;
+  gcry_mpi_t a, b, p, p_plus_1, x, q, r;
+  gcry_mpi_t two, three, four, x_3, axb, y_2, y_prime, y_s, y;
     
   gcry_error_t rc;
 
   printf(">>> compressed_hex_key_to_sexp: %zu - %d - %s - %s\n", p_comp_key_size, p_comp_mode, p_curve, p_algo);
   show_hex(">> compressed_hex_key_to_sexp: ", p_comp_key, p_comp_key_size);
   
-  // Extract (p, a, b) parameters from curve
+  /* Extract (p, a, b) parameters from elliptic curve */
   if ((rc = gcry_sexp_build (&keyparm, NULL, "(genkey(ecc(curve %s)(flags param)))", p_curve)) != 0) {
     printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
     return -1;
@@ -361,7 +363,11 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
     return -6;
   }
   gcry_ctx_release (ctx);
-  // Initialise x public key
+  gcry_sexp_release(key);
+  gcry_sexp_release(private_key);
+  gcry_sexp_release(keyparm);
+  
+  /* Initialise x public key to compute y_2 */
   buffer_size = p_comp_key_size;
   x_buffer = (unsigned char*)gcry_malloc(buffer_size);
   if (x_buffer == NULL) {
@@ -379,49 +385,67 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   }
   gcry_sexp_release(e_key);
   
-  /* Ecc curve equation: y^2=x^3+a*x+b */
+  /* NIST P-256 Ecc curve equation: y^2=x^3+a*x+b */
   /* Compute y^2 */
-  two   = gcry_mpi_set_ui (NULL, 2);
-  three = gcry_mpi_set_ui (NULL, 3);
-  four = gcry_mpi_set_ui (NULL, 4);
-  x_3   = gcry_mpi_new (0);
-  axb   = gcry_mpi_new (0);
-  y_2   = gcry_mpi_new (0);
-  gcry_mpi_powm (x_3, x, three, p); // w = b^e \bmod m. 
-  gcry_mpi_mulm (axb, a, x, p);
-  gcry_mpi_addm (axb, axb, b, p);
-  gcry_mpi_addm (y_2, x_3, axb, p);
+  two = gcry_mpi_set_ui(NULL, 2);
+  three = gcry_mpi_set_ui(NULL, 3);
+  four = gcry_mpi_set_ui(NULL, 4);
+  x_3 = gcry_mpi_new(0);
+  axb = gcry_mpi_new(0);
+  y_2 = gcry_mpi_new(0);
+  gcry_mpi_powm(x_3, x, three, p); // w = b^e \bmod m. 
+  gcry_mpi_mulm(axb, a, x, p);
+  gcry_mpi_addm(axb, axb, b, p);
+  gcry_mpi_addm(y_2, x_3, axb, p);
+  gcry_mpi_release(two);
+  gcry_mpi_release(three);
+  gcry_mpi_release(a);
+  gcry_mpi_release(b);
+  gcry_mpi_release(x_3);
+  gcry_mpi_release(axb);
+  gcry_mpi_release(x);
   show_mpi("y_2", "", y_2);
 
-  /* Compute sqrt(y^2): two solutions */
-  q     = gcry_mpi_new (0);
-  r     = gcry_mpi_new (0);
-  y     = gcry_mpi_new (0);
-  if (p_comp_mode == 0) {
-    /* Solution one: y = p + 1 / 4 */
-    p_plus_1   = gcry_mpi_new (0);
-    gcry_mpi_add_ui(p_plus_1, p, 1);
-    gcry_mpi_div(q, r, p_plus_1, four, 0);
-    gcry_mpi_release(p_plus_1);
-  } else {
-    /* Solution two: p - 5 / 4 */
-    p_minus_5  = gcry_mpi_new (0);
-    gcry_mpi_sub_ui(p_minus_5, p, 5);
-    gcry_mpi_div(q, r, p_minus_5, four, 0);
-    gcry_mpi_release(p_minus_5);
-  }
-  gcry_mpi_powm(y, y_2, q, p);
-  show_mpi("y", "", y);
-  gcry_mpi_release (four);
-  gcry_mpi_release (q);
-  gcry_mpi_release (r);
-  gcry_mpi_release (y_2);
+  /**
+   * Compute sqrt(y^2): two solutions
+   * NIST P-256 curve: p congruant to 1 (mod 4) = 3 - https://www.ietf.org/archive/id/draft-jivsov-ecc-compact-05.txt Clause 4.3.  The efficient square root algorithm for p=4*k+3
+   * Solution: y' sqrt(y_2) = y' = y2^((p+1)/4)
+   */
+  q = gcry_mpi_new(0);
+  r = gcry_mpi_new(0);
+  p_plus_1 = gcry_mpi_new(0);
+  y_prime = gcry_mpi_new(0);
+  gcry_mpi_add_ui(p_plus_1, p, 1);
+  gcry_mpi_div(q, r, p_plus_1, four, 0);
+  gcry_mpi_release(p_plus_1);
+  gcry_mpi_powm(y_prime, y_2, q, p);
+  show_mpi("y'", "", y_prime);
+  gcry_mpi_release(four);
+  gcry_mpi_release(q);
+  gcry_mpi_release(r);
+  gcry_mpi_release(y_2);
 
+  /* The solution to y_2 is y = min(y',p-y') */
+  y = gcry_mpi_new (0);
+  /* Test LSB bit of y' */
+  if (gcry_mpi_test_bit(y_prime, 0) && (p_comp_mode == 1)) {
+    gcry_mpi_add_ui(y, y_prime, 0);  // y = y'
+  } else {
+    y_s = gcry_mpi_new (0);
+    gcry_mpi_subm(y_s, p, y_prime, p); /* y_s = p - y_prime (mod p) */
+    show_mpi("y_s= ", "", y_s);
+    gcry_mpi_add_ui(y, y_s, 0);  // y = p-y'
+    gcry_mpi_release(y_s);
+  }
+  gcry_mpi_release(y_prime);
+  show_mpi("y= ", "", y);
+  
   //show_hex(x_buffer, buffer_size, "x_buffer="),
   y_buffer = (unsigned char*)gcry_malloc(buffer_size);
   gcry_mpi_print (GCRYMPI_FMT_USG, y_buffer, buffer_size, NULL, y);
+  gcry_mpi_release (y);
   //show_hex(y_buffer, buffer_size, "y_buffer="),
-  xy_buffer = (unsigned char*)gcry_malloc(2 * buffer_size + 1);
+  xy_buffer = (unsigned char*)gcry_malloc(1 + 2 * buffer_size);
   *xy_buffer = 0x04;
   memcpy((void*)(xy_buffer + 1), (const void*)x_buffer, buffer_size);
   memcpy((void*)(char*)(xy_buffer + buffer_size + 1), (const void*)y_buffer, buffer_size);
@@ -435,12 +459,12 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   } else if (strcmp(p_algo, "ecdsa") == 0) {
     if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecdsa(curve %s)(q %b)))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
       printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
-      return -10;
+      return -11;
     }
   } else {
     if ((rc = gcry_sexp_build (p_key, NULL, "(key-data(public-key(ecdh(curve %s)(q %b))))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
       printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
-      return -11;
+      return -12;
     }
   }
   show_sexp("compressed_hex_key_to_sexp: p_key=", *p_key);
@@ -449,21 +473,7 @@ compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_
   gcry_free(x_buffer);
   gcry_free(y_buffer);
   gcry_free(xy_buffer);
-  gcry_mpi_release(x);
-  gcry_mpi_release(y);
-
-  gcry_mpi_release(two);
-  gcry_mpi_release(three);
-  gcry_mpi_release(a);
-  gcry_mpi_release(b);
-  gcry_mpi_release(p);
-  gcry_mpi_release(x_3);
-  gcry_mpi_release(axb);
   
-  gcry_sexp_release(private_key);
-  gcry_sexp_release(key);
-  gcry_sexp_release(keyparm);
- 
   return 0;
 } // End of function compressed_hex_key_to_sexp
 
@@ -2334,15 +2344,10 @@ proto_register_etsi_ieee1609dot2(void)
   };
 
   /* Register the protocol name and description */
-  /*proto_etsi_ieee1609dot2 = proto_register_protocol (
-						     "ItsEtsiIEEE1609dot2",
-						     "ItsEtsiIEEE1609dot2",
-						     "ItsEtsiIEEE1609dot2"
-						     );*/
   proto_etsi_ieee1609dot2 = proto_register_protocol (
-						     "Its Etsi IEEE 1609dot2", /* name       */
-						     "Its Etsi IEEE 1609dot2", /* short name */
-						     "its_etsi_ieee_1609dot2"  /* abbrev     */
+						     "ETSI ITS IEEE 1609dot2", /* name       */
+						     "ETSI ITS Etsi IEEE 1609dot2", /* short name */
+						     "etsi_its_ieee_1609dot2"  /* abbrev     */
 						     );
 
   /* Required function calls to register the header fields and subtrees used */
