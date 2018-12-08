@@ -47,7 +47,8 @@ void proto_reg_handoff_gn(void);
 #define ETHER_TYPE 0x8947
 #define EX_ETHER_TYPE 0x0707
 
-#define GN_VERSION 0
+#define GN_VERSION_1_2_1 0
+#define GN_VERSION_1_3_1 1
 
 /* Header lengths */
 #define L_BH      4
@@ -4339,7 +4340,7 @@ dissect_gn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 
   /* Check GN version */
   gn_version = (tvb_get_guint8(tvb, 0) & M_VERSION) >> 4;
-  if(gn_version != GN_VERSION)
+  if ((gn_version != GN_VERSION_1_2_1) && (gn_version != GN_VERSION_1_3_1))
     return 0;
   
   /* Update COL_PROTOCOL */ 
