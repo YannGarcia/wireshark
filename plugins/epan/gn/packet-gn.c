@@ -2658,7 +2658,7 @@ dissect_ieee1609dot2_appPermissions_packet(tvbuff_t *tvb, packet_info *pinfo _U_
   printf(">>> dissect_ieee1609dot2_appPermissions_packet: offset=0x%02x\n", offset);
   if (tree) { /* we are being asked for details */
     gint sh_len;
-    guint items = 0;
+    guint8 items = 0;
     guint8 len = 0;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
@@ -2676,7 +2676,7 @@ dissect_ieee1609dot2_appPermissions_packet(tvbuff_t *tvb, packet_info *pinfo _U_
     } // else, not reallistic
     offset += len;
     printf("dissect_ieee1609dot2_toBeSignedCertificate_packet: #items=%d\n", items);
-    for (guint i = 0; i < items; i++) {
+    for (int i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_psid_ssp_packet(tvb, pinfo, sh_tree, offset);
     } // End of 'for' statement
 

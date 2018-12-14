@@ -265,10 +265,6 @@ cant_load_winpcap_err(const char *app_name)
 	    app_name);
 }
 
-#ifdef _MSC_VER
-#pragma warning( disable : 4273)
-#endif
-
 char*
 pcap_lookupdev (char *a)
 {
