@@ -48,7 +48,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 # WIRESHARK_TARGET_PLATFORM accordingly. Otherwise use
 # %WIRESHARK_TARGET_PLATFORM%.
 
-set(PCAP_LINK_LIBRARIES PCAP_LIBRARIES)
 if(WIN32)
 	find_package(PowerShell REQUIRED)
 
@@ -67,6 +66,19 @@ if(WIN32)
 	endif()
 
 	# Sanity check
+	if(DEFINED ENV{PLATFORM})
+		string(TOLOWER $ENV{PLATFORM} _vs_platform)
+	else()
+		set(_vs_platform "[undefined]") # x86
+	endif()
+	if(
+		(_vs_platform STREQUAL "x64" AND NOT WIRESHARK_TARGET_PLATFORM STREQUAL "win64")
+		OR
+		(_vs_platform STREQUAL "[undefined]" AND NOT WIRESHARK_TARGET_PLATFORM STREQUAL "win32")
+	)
+		message(FATAL_ERROR "The PLATFORM environment variable (${_vs_platform})"
+			" doesn't match the generator platform (${WIRESHARK_TARGET_PLATFORM})")
+	endif()
 	message(STATUS "Building for ${WIRESHARK_TARGET_PLATFORM} using ${CMAKE_GENERATOR}")
 
 	# Determine where the 3rd party libraries will be
@@ -112,7 +124,6 @@ if(WIN32)
 	set(HAVE_SYS_TYPES_H TRUE)
 	set(HAVE_STDINT_H TRUE)
 	set(HAVE_STDDEF_H TRUE)
-	set(PCAP_LINK_LIBRARIES "")
 elseif( CYGWIN)
         if( $ENV{WIRESHARK_TARGET_PLATFORM} )
 		set(WIRESHARK_TARGET_PLATFORM $ENV{WIRESHARK_TARGET_PLATFORM})
@@ -1679,7 +1690,7 @@ endif()
 set(LIBEPAN_LIBS
 		epan
 		${AIRPCAP_LIBRARIES}
-		${PCAP_LINK_LIBRARIES}
+		${PCAP_LIBRARIES}
 		${CARES_LIBRARIES}
 		${KERBEROS_LIBRARIES}
 		${LUA_LIBRARIES}
@@ -2394,7 +2405,7 @@ if(BUILD_randpkt)
 		wiretap
 		wsutil
 		${M_LIBRARIES}
-		${PCAP_LINK_LIBRARIES}
+		${PCAP_LIBRARIES}
 		${CARES_LIBRARIES}
 		${ZLIB_LIBRARIES}
 	)
@@ -2552,7 +2563,7 @@ if(BUILD_dumpcap AND PCAP_FOUND)
 		caputils
 		ui
 		wsutil
-		${PCAP_LINK_LIBRARIES}
+		${PCAP_LIBRARIES}
 		${CAP_LIBRARIES}
 		${GLIB2_LIBRARIES}
 		${GTHREAD2_LIBRARIES}
@@ -2837,7 +2848,7 @@ set(CLEAN_C_FILES
 # in CMakeRCInformation.cmake but that doesn't appear to work.
 if (WIN32 OR CYGWIN)
 	list(FILTER CLEAN_C_FILES EXCLUDE REGEX ".*\\.rc")
-endif ()
+endif (WIN32)
 
 set_source_files_properties(
 	${CLEAN_C_FILES}

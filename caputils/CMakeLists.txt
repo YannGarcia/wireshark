@@ -42,13 +42,6 @@ set_source_files_properties(
 	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
 
-if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
-	set_source_files_properties(
-		capture-wpcap.c
-		PROPERTIES
-		COMPILE_FLAGS "/WX-"
-	)
-endif()
 
 add_library(caputils STATIC
 	${CAPUTILS_SRC}
