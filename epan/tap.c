@@ -25,7 +25,6 @@
 #include <epan/packet_info.h>
 #include <epan/dfilter/dfilter.h>
 #include <epan/tap.h>
-#include <wsutil/ws_printf.h> /* ws_g_warning */
 
 static gboolean tapping_is_active=FALSE;
 
@@ -220,7 +219,7 @@ tap_queue_packet(int tap_id, packet_info *pinfo, const void *tap_specific_data)
 	 * rather than having a fixed maximum number of entries?
 	 */
 	if(tap_packet_index >= TAP_PACKET_QUEUE_LEN){
-		ws_g_warning("Too many taps queued");
+		g_warning("Too many taps queued");
 		return;
 	}
 
@@ -450,6 +449,15 @@ find_tap_id(const char *name)
 static void
 free_tap_listener(tap_listener_t *tl)
 {
+	/* The free_tap_listener is called in the error path of
+	 * register_tap_listener (when the dfilter fails to be registered)
+	 * and the finish callback is set after that.
+	 * If this is changed make sure the finish callback is not called
+	 * twice to prevent double-free errors.
+	 */
+	if (tl->finish) {
+		tl->finish(tl->tapdata);
+	}
 	dfilter_free(tl->code);
 	g_free(tl->fstring);
 	g_free(tl);
@@ -613,12 +621,10 @@ remove_tap_listener(void *tapdata)
 
 		}
 		if(!tl) {
-			ws_g_warning("remove_tap_listener(): no listener found with that tap data");
+			g_warning("remove_tap_listener(): no listener found with that tap data");
 			return;
 		}
 	}
-	if(tl->finish)
-		tl->finish(tapdata);
 	free_tap_listener(tl);
 }
 

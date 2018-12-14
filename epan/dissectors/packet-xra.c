@@ -39,6 +39,7 @@ static gint ett_xra_tlv_ms_info = -1;
 static gint ett_xra_tlv_burst_info = -1;
 static gint ett_plc = -1;
 static gint ett_plc_mb = -1;
+static gint ett_plc_timestamp = -1;
 static gint ett_ncp = -1;
 static gint ett_ncp_mb = -1;
 static gint ett_init_ranging = -1;
@@ -140,6 +141,11 @@ static gint hf_plc_trigger_mb = -1;
  */
 static gint hf_plc_mb_ts_reserved = -1;
 static gint hf_plc_mb_ts_timestamp = -1;
+static gint hf_plc_mb_ts_timestamp_epoch = -1;
+static gint hf_plc_mb_ts_timestamp_d30timestamp = -1;
+static gint hf_plc_mb_ts_timestamp_extra_204_8 = -1;
+static gint hf_plc_mb_ts_timestamp_extra_204_8_X_16 = -1;
+static gint hf_plc_mb_ts_timestamp_formatted = -1;
 static gint hf_plc_mb_ts_crc24d = -1;
 
 /*
@@ -328,8 +334,8 @@ static const true_false_string data_profile_update = {
 };
 
 static const true_false_string ncp_profile_select = {
-  "use even profile",
-  "use odd profile"
+  "use odd profile",
+  "use even profile"
 };
 
 static const true_false_string last_ncp_block = {
@@ -385,7 +391,7 @@ dissect_xra(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _
   proto_item *it;
   proto_tree *xra_tree;
 
-  it = proto_tree_add_protocol_format (tree, proto_xra, tvb, 0, -1,"XRA (Excentis XRA header)");
+  it = proto_tree_add_protocol_format (tree, proto_xra, tvb, 0, -1,"XRA");
 
   xra_tree = proto_item_add_subtree (it, ett_xra);
 
@@ -403,6 +409,10 @@ dissect_xra(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _
   proto_tree_add_item_ret_uint (xra_tree, hf_xra_packettype, tvb, 1, 1, ENC_BIG_ENDIAN, &packet_type);
   proto_tree_add_item_ret_uint (xra_tree, hf_xra_tlvlength, tvb, 2, 2, ENC_BIG_ENDIAN, &tlv_length);
 
+  guint16 xra_length = 4 + tlv_length;
+  proto_item_append_text(it, " (Excentis XRA header: %d bytes). DOCSIS frame is %d bytes.", xra_length, tvb_reported_length_remaining(tvb, xra_length));
+  proto_item_set_len(it, xra_length);
+
   col_add_fstr(pinfo->cinfo, COL_INFO, "%s", val_to_str(packet_type, packettype, "Unknown XRA packet type: %u"));
 
   /*Dissecting TLVs*/
@@ -410,7 +420,6 @@ dissect_xra(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _
   xra_tlv_tvb = tvb_new_subset_length(tvb, 4, tlv_length);
   dissect_xra_tlv(xra_tlv_tvb, pinfo, xra_tree, data, tlv_length, &segment_header_present);
 
-  guint16 xra_length = 4 + tlv_length;
   if(tvb_reported_length_remaining(tvb, xra_length) == 0) {
     return xra_length;
   }
@@ -694,8 +703,39 @@ dissect_xra_tlv(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* da
 
 static void
 dissect_timestamp_mb(tvbuff_t * tvb, proto_tree* tree) {
+  nstime_t ts;
+  guint64 plc_timestamp, plc_timestamp_ns;
+  proto_item* timestamp_it;
+  proto_tree* timestamp_tree;
+
+  static const int * timestamp_parts[] = {
+    &hf_plc_mb_ts_timestamp_epoch,
+    &hf_plc_mb_ts_timestamp_d30timestamp,
+    &hf_plc_mb_ts_timestamp_extra_204_8,
+    &hf_plc_mb_ts_timestamp_extra_204_8_X_16,
+    NULL
+  };
+
   proto_tree_add_item (tree, hf_plc_mb_ts_reserved, tvb, 0, 1, ENC_BIG_ENDIAN);
-  proto_tree_add_item (tree, hf_plc_mb_ts_timestamp, tvb, 1, 8, ENC_BIG_ENDIAN);
+
+  timestamp_it = proto_tree_add_item_ret_uint64 (tree, hf_plc_mb_ts_timestamp, tvb, 1, 8, ENC_BIG_ENDIAN, &plc_timestamp);
+  timestamp_tree = proto_item_add_subtree (timestamp_it, ett_plc_timestamp);
+
+  /*See figure 104  CM-SP-MULPIv3.1-115-180509*/
+  proto_tree_add_bitmask_list(timestamp_tree, tvb, 1, 8, timestamp_parts, ENC_BIG_ENDIAN);
+
+  /*Timestamp calculation in ns. Beware of overflow of guint64. Splitting off timestamp in composing contributions
+   * Epoch (bits 63-41): 10.24 MHz/2^32 clock: *100000*2^22 ns
+   * D3.0 timestamp (bits 40-9): 204.8MHz/20 clock: 10.24MHz clock
+   * Bits 8-4: 204.8MHz clock
+   * Lowest 4 bits (bits 3-0): 16*204.8MHz clock
+   */
+  plc_timestamp_ns = ((plc_timestamp>>41)&0x7FFFFF)*100000*4194304 +  ((plc_timestamp >>9)&0xFFFFFFFF)*100000/1024 + ((plc_timestamp>>4)&0x1F)*10000/2048 + (plc_timestamp&0x0F)*10000/2048/16;
+
+  ts.secs= plc_timestamp_ns/1000000000;
+  ts.nsecs=plc_timestamp_ns%1000000000;
+  proto_tree_add_time(timestamp_tree, hf_plc_mb_ts_timestamp_formatted, tvb, 1, 8,  &ts);
+
   proto_tree_add_item (tree, hf_plc_mb_ts_crc24d, tvb, 9, 3, ENC_NA);
 }
 
@@ -921,7 +961,7 @@ proto_register_xra (void)
         NULL, HFILL}
     },
     {&hf_xra_packettype,
-      {"DS Packet Type", "xra.packettype",
+      {"Packet Type", "xra.packettype",
         FT_UINT8, BASE_DEC, VALS(packettype), 0x0,
         NULL, HFILL}
     },
@@ -1230,6 +1270,31 @@ proto_register_xra (void)
         FT_UINT64, BASE_DEC,0 , 0x0,
         NULL, HFILL}
     },
+    {&hf_plc_mb_ts_timestamp_epoch,
+      {"Timestamp Epoch", "docsis_plc.mb_ts_timestamp_epoch",
+        FT_UINT64, BASE_HEX,0 , 0xFFFFFE0000000000,
+        NULL, HFILL}
+    },
+    {&hf_plc_mb_ts_timestamp_d30timestamp,
+      {"D3.0 Timestamp", "docsis_plc.mb_ts_timestamp_d30timestamp",
+        FT_UINT64, BASE_HEX,0 , 0x000001FFFFFFFE00,
+        NULL, HFILL}
+    },
+    {&hf_plc_mb_ts_timestamp_extra_204_8,
+      {"Timestamp: extra 204.8MHz samples", "docsis_plc.mb_ts_timestamp_extra_204_8",
+        FT_UINT64, BASE_DEC,0 , 0x00000000000001F0,
+        NULL, HFILL}
+    },
+    {&hf_plc_mb_ts_timestamp_extra_204_8_X_16,
+      {"Timestamp: extra 16 x 204.8MHz samples", "docsis_plc.mb_ts_timestamp_extra_204_8_X_16",
+        FT_UINT64, BASE_DEC, 0 , 0x000000000000000F,
+        NULL, HFILL}
+    },
+    {&hf_plc_mb_ts_timestamp_formatted,
+      {"Formatted PLC timestamp", "docsis_plc.mb_ts_timestamp_formatted",
+        FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0,
+        NULL, HFILL }
+    },
     {&hf_plc_mb_ts_crc24d,
       {"CRC-24-D", "docsis_plc.mb_ts_crc24d",
         FT_BYTES, BASE_NONE, 0 , 0x0,
@@ -1312,6 +1377,7 @@ proto_register_xra (void)
     &ett_xra_tlv_burst_info,
     &ett_plc,
     &ett_plc_mb,
+    &ett_plc_timestamp,
     &ett_ncp,
     &ett_ncp_mb,
     &ett_init_ranging

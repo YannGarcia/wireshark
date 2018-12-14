@@ -245,6 +245,8 @@ typedef struct _rtps_dissector_data {
 #define PID_BASE_TYPE_NAME                      (0x0076)
 #define PID_ENABLE_ENCRYPTION                   (0x0077)
 #define PID_ENABLE_AUTHENTICATION               (0x0078)
+#define PID_DOMAIN_ID                           (0x000f)
+#define PID_DOMAIN_TAG                          (0x4014)
 
 /* Vendor-specific: RTI */
 #define PID_PRODUCT_VERSION                     (0x8000)
@@ -259,7 +261,7 @@ typedef struct _rtps_dissector_data {
 #define PID_ACK_KIND                            (0x800b)
 #define PID_PEER_HOST_EPOCH                     (0x800e)
 #define PID_RELATED_ORIGINAL_WRITER_INFO        (0x800f)/* inline QoS */
-#define PID_DOMAIN_ID                           (0x800f)
+#define PID_RTI_DOMAIN_ID                       (0x800f)
 #define PID_RELATED_READER_GUID                 (0x8010)/* inline QoS */
 #define PID_TRANSPORT_INFO_LIST                 (0x8010)
 #define PID_SOURCE_GUID                         (0x8011)/* inline QoS */
@@ -462,6 +464,8 @@ typedef struct _rtps_dissector_data {
 #define RTPS_VENDOR_PT_LITE_STRING       "PrismTech - OpenSplice Lite"
 #define RTPS_VENDOR_TECHNICOLOR          (0x010E)
 #define RTPS_VENDOR_TECHNICOLOR_STRING   "Technicolor Inc. - Qeo"
+#define RTPS_VENDOR_EPROSIMA             (0x010F)
+#define RTPS_VENDOR_EPROSIMA_STRING      "eProsima - Fast-RTPS"
 
 /* Data encapsulation */
 #define ENCAPSULATION_CDR_BE            (0x0000)
@@ -557,6 +561,8 @@ typedef struct _rtps_dissector_data {
 #define TOPIC_INFO_ADD_DURABILITY                (0x10)
 #define TOPIC_INFO_ADD_OWNERSHIP                 (0x20)
 #define TOPIC_INFO_ALL_SET                       (0x3f)
+
+#define NOT_A_FRAGMENT                           (-1)
 
 /* Utilities to add elements to the protocol tree for packet-rtps.h and packet-rtps2.h */
 extern guint16 rtps_util_add_protocol_version(proto_tree *tree, tvbuff_t* tvb, gint offset);

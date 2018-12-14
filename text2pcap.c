@@ -33,9 +33,9 @@
  * - No text appears between the offset and the bytes (any bytes appearing after
  *   such text would be ignored)
  *
- * - The offset must be arithmetically correct, i.e. if the offset is 00000020, then
- *   exactly 32 bytes must have been read into this packet before this. If the offset
- *   is wrong, the packet is immediately terminated
+ * - The offset must be arithmetically correct, i.e. if the offset is 00000020,
+ *   then exactly 32 bytes must have been read into this packet before this.
+ *   If the offset is wrong, the packet is immediately terminated
  *
  * A packet start is signaled by a zero offset.
  *
@@ -51,7 +51,7 @@
  *
  * The output is a libpcap packet containing Ethernet frames by
  * default. This program takes options which allow the user to add
- * dummy Ethernet, IP and UDP or TCP headers to the packets in order
+ * dummy Ethernet, IP and UDP, TCP or SCTP headers to the packets in order
  * to allow dumps of L3 or higher protocols to be decoded.
  *
  * Considerable flexibility is built into this code to read hexdumps
@@ -143,16 +143,18 @@ static gboolean use_pcapng = FALSE;
 /* Debug level */
 static int debug = 0;
 /* Be quiet */
-static int quiet = FALSE;
+static gboolean quiet = FALSE;
 
 /* Dummy Ethernet header */
 static int hdr_ethernet = FALSE;
+static guint8 hdr_eth_dest_addr[6] = {0x0a, 0x02, 0x02, 0x02, 0x02, 0x02};
+static guint8 hdr_eth_src_addr[6]  = {0x0a, 0x02, 0x02, 0x02, 0x02, 0x01};
 static guint32 hdr_ethernet_proto = 0;
 
 /* Dummy IP header */
-static int hdr_ip = FALSE;
-static int hdr_ipv6 = FALSE;
-static long hdr_ip_proto = 0;
+static gboolean hdr_ip = FALSE;
+static gboolean hdr_ipv6 = FALSE;
+static long hdr_ip_proto = -1;
 
 /* Destination and source addresses for IP header */
 static guint32 hdr_ip_dest_addr = 0;
@@ -162,25 +164,25 @@ static ws_in6_addr hdr_ipv6_src_addr  = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 static ws_in6_addr NO_IPv6_ADDRESS    = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
 
 /* Dummy UDP header */
-static int     hdr_udp       = FALSE;
+static gboolean hdr_udp = FALSE;
 static guint32 hdr_dest_port = 0;
 static guint32 hdr_src_port  = 0;
 
 /* Dummy TCP header */
-static int hdr_tcp = FALSE;
+static gboolean hdr_tcp = FALSE;
 
 /* TCP sequence numbers when has_direction is true */
 static guint32 tcp_in_seq_num = 0;
 static guint32 tcp_out_seq_num = 0;
 
 /* Dummy SCTP header */
-static int hdr_sctp = FALSE;
+static gboolean hdr_sctp = FALSE;
 static guint32 hdr_sctp_src  = 0;
 static guint32 hdr_sctp_dest = 0;
 static guint32 hdr_sctp_tag  = 0;
 
 /* Dummy DATA chunk header */
-static int hdr_data_chunk = FALSE;
+static gboolean hdr_data_chunk = FALSE;
 static guint8  hdr_data_chunk_type = 0;
 static guint8  hdr_data_chunk_bits = 0;
 static guint32 hdr_data_chunk_tsn  = 0;
@@ -189,7 +191,7 @@ static guint16 hdr_data_chunk_ssn  = 0;
 static guint32 hdr_data_chunk_ppid = 0;
 
 /* ASCII text dump identification */
-static int identify_ascii = FALSE;
+static gboolean identify_ascii = FALSE;
 
 static gboolean has_direction = FALSE;
 static guint32 direction = 0;
@@ -271,10 +273,7 @@ typedef struct {
     guint16 l3pid;
 } hdr_ethernet_t;
 
-static hdr_ethernet_t HDR_ETHERNET = {
-    {0x0a, 0x02, 0x02, 0x02, 0x02, 0x02},
-    {0x0a, 0x01, 0x01, 0x01, 0x01, 0x01},
-    0};
+static hdr_ethernet_t HDR_ETHERNET;
 
 typedef struct {
     guint8  ver_hdrlen;
@@ -290,14 +289,6 @@ typedef struct {
     guint32 dest_addr;
 } hdr_ip_t;
 
-static hdr_ip_t HDR_IP = {0x45, 0, 0, 0x3412, 0, 0, 0xff, 0, 0,
-#if G_BYTE_ORDER == G_BIG_ENDIAN
-0x0a010101, 0x0a020202
-#else
-0x0101010a, 0x0202020a
-#endif
-};
-
 /* Fixed IP address values */
 #if G_BYTE_ORDER == G_BIG_ENDIAN
 #define IP_SRC 0x0a010101
@@ -306,6 +297,8 @@ static hdr_ip_t HDR_IP = {0x45, 0, 0, 0x3412, 0, 0, 0xff, 0, 0,
 #define IP_SRC 0x0101010a
 #define IP_DST 0x0202020a
 #endif
+
+static hdr_ip_t HDR_IP = {0x45, 0, 0, 0x3412, 0, 0, 0xff, 0, 0, IP_SRC, IP_DST};
 
 static struct {         /* pseudo header for checksum calculation */
     guint32 src_addr;
@@ -334,11 +327,13 @@ typedef struct {
 
 static hdr_ipv6_t HDR_IPv6;
 
+/* https://tools.ietf.org/html/rfc2460#section-8.1 */
 static struct {                 /* pseudo header ipv6 for checksum calculation */
     struct  e_in6_addr src_addr6;
     struct  e_in6_addr dst_addr6;
-    guint32 protocol;
-    guint32 zero;
+    guint32 length;
+    guint8 zero[3];
+    guint8 next_header;
 } pseudoh6;
 
 
@@ -616,7 +611,6 @@ write_current_packet (gboolean cont)
     guint32  length         = 0;
     guint16  padding_length = 0;
     int      err;
-    guint16  ihatemacros;
     gboolean success;
 
     if (curr_offset > header_length) {
@@ -624,12 +618,6 @@ write_current_packet (gboolean cont)
 
         /* Is direction indication on with an inbound packet? */
         gboolean isInbound = has_direction && (direction == 2);
-
-        /* if defined IPv6 we should rewrite hdr_ethernet_proto anyways */
-        if (hdr_ipv6) {
-            hdr_ethernet_proto = 0x86DD;
-            hdr_ip = FALSE;
-        }
 
         /* Compute packet length */
         length = curr_offset;
@@ -643,6 +631,14 @@ write_current_packet (gboolean cont)
 
         /* Write Ethernet header */
         if (hdr_ethernet) {
+            if (isInbound)
+            {
+                memcpy(HDR_ETHERNET.dest_addr, hdr_eth_src_addr, 6);
+                memcpy(HDR_ETHERNET.src_addr, hdr_eth_dest_addr, 6);
+            } else {
+                memcpy(HDR_ETHERNET.dest_addr, hdr_eth_dest_addr, 6);
+                memcpy(HDR_ETHERNET.src_addr, hdr_eth_src_addr, 6);
+            }
             HDR_ETHERNET.l3pid = g_htons(hdr_ethernet_proto);
             write_bytes((const char *)&HDR_ETHERNET, sizeof(HDR_ETHERNET));
         }
@@ -663,6 +659,17 @@ write_current_packet (gboolean cont)
             HDR_IP.hdr_checksum = 0;
             HDR_IP.hdr_checksum = in_checksum(&HDR_IP, sizeof(HDR_IP));
             write_bytes((const char *)&HDR_IP, sizeof(HDR_IP));
+
+            /* initialize pseudo header for checksum calculation */
+            pseudoh.src_addr    = HDR_IP.src_addr;
+            pseudoh.dest_addr   = HDR_IP.dest_addr;
+            pseudoh.zero        = 0;
+            pseudoh.protocol    = (guint8) hdr_ip_proto;
+            if (hdr_tcp) {
+                pseudoh.length      = g_htons(length - header_length + sizeof(HDR_TCP));
+            } else if (hdr_udp) {
+                pseudoh.length      = g_htons(length - header_length + sizeof(HDR_UDP));
+            }
         } else if (hdr_ipv6) {
             if (memcmp(isInbound ? &hdr_ipv6_dest_addr : &hdr_ipv6_src_addr, &NO_IPv6_ADDRESS, sizeof(ws_in6_addr)))
                 memcpy(&HDR_IPv6.ip6_src, isInbound ? &hdr_ipv6_dest_addr : &hdr_ipv6_src_addr, sizeof(ws_in6_addr));
@@ -671,7 +678,7 @@ write_current_packet (gboolean cont)
 
             HDR_IPv6.ip6_ctlun.ip6_un2_vfc &= 0x0F;
             HDR_IPv6.ip6_ctlun.ip6_un2_vfc |= (6<< 4);
-            HDR_IPv6.ip6_ctlun.ip6_un1.ip6_un1_plen = g_htons(length - ip_offset + padding_length);
+            HDR_IPv6.ip6_ctlun.ip6_un1.ip6_un1_plen = g_htons(length - ip_offset - sizeof(HDR_IPv6) + padding_length);
             HDR_IPv6.ip6_ctlun.ip6_un1.ip6_un1_nxt  = (guint8) hdr_ip_proto;
             HDR_IPv6.ip6_ctlun.ip6_un1.ip6_un1_hlim = 32;
             write_bytes((const char *)&HDR_IPv6, sizeof(HDR_IPv6));
@@ -679,19 +686,13 @@ write_current_packet (gboolean cont)
             /* initialize pseudo ipv6 header for checksum calculation */
             pseudoh6.src_addr6  = HDR_IPv6.ip6_src;
             pseudoh6.dst_addr6  = HDR_IPv6.ip6_dst;
-            pseudoh6.zero       = 0;
-            pseudoh6.protocol   = (guint8) hdr_ip_proto;
-            ihatemacros         = g_ntohs(HDR_IPv6.ip6_ctlun.ip6_un1.ip6_un1_plen);
-            pseudoh.length      = g_htons(length - ihatemacros + sizeof(HDR_UDP));
-        }
-
-        if (!hdr_ipv6) {
-            /* initialize pseudo header for checksum calculation */
-            pseudoh.src_addr    = HDR_IP.src_addr;
-            pseudoh.dest_addr   = HDR_IP.dest_addr;
-            pseudoh.zero        = 0;
-            pseudoh.protocol    = (guint8) hdr_ip_proto;
-            pseudoh.length      = g_htons(length - header_length + sizeof(HDR_UDP));
+            memset(pseudoh6.zero, 0, sizeof(pseudoh6.zero));
+            pseudoh6.next_header   = (guint8) hdr_ip_proto;
+            if (hdr_tcp) {
+                pseudoh6.length      = g_htons(length - header_length + sizeof(HDR_TCP));
+            } else if (hdr_udp) {
+                pseudoh6.length      = g_htons(length - header_length + sizeof(HDR_UDP));
+            }
         }
 
         /* Write UDP header */
@@ -702,7 +703,7 @@ write_current_packet (gboolean cont)
             /* initialize the UDP header */
             HDR_UDP.source_port = isInbound ? g_htons(hdr_dest_port): g_htons(hdr_src_port);
             HDR_UDP.dest_port = isInbound ? g_htons(hdr_src_port) : g_htons(hdr_dest_port);
-            HDR_UDP.length      = pseudoh.length;
+            HDR_UDP.length      = hdr_ipv6 ? pseudoh6.length : pseudoh.length;
             HDR_UDP.checksum = 0;
             /* Note: g_ntohs()/g_htons() macro arg may be eval'd twice so calc value before invoking macro */
             x16  = hdr_ipv6 ? in_checksum(&pseudoh6, sizeof(pseudoh6)) : in_checksum(&pseudoh, sizeof(pseudoh));
@@ -723,12 +724,6 @@ write_current_packet (gboolean cont)
             guint16 x16;
             guint32 u;
 
-             /* initialize pseudo header for checksum calculation */
-            pseudoh.src_addr    = HDR_IP.src_addr;
-            pseudoh.dest_addr   = HDR_IP.dest_addr;
-            pseudoh.zero        = 0;
-            pseudoh.protocol    = (guint8) hdr_ip_proto;
-            pseudoh.length      = g_htons(length - header_length + sizeof(HDR_TCP));
             /* initialize the TCP header */
             HDR_TCP.source_port = isInbound ? g_htons(hdr_dest_port): g_htons(hdr_src_port);
             HDR_TCP.dest_port = isInbound ? g_htons(hdr_src_port) : g_htons(hdr_dest_port);
@@ -746,7 +741,7 @@ write_current_packet (gboolean cont)
             HDR_TCP.window = g_htons(0x2000);
             HDR_TCP.checksum = 0;
             /* Note: g_ntohs()/g_htons() macro arg may be eval'd twice so calc value before invoking macro */
-            x16  = in_checksum(&pseudoh, sizeof(pseudoh));
+            x16  = hdr_ipv6 ? in_checksum(&pseudoh6, sizeof(pseudoh6)) : in_checksum(&pseudoh, sizeof(pseudoh));
             u    = g_ntohs(x16);
             x16  = in_checksum(&HDR_TCP, sizeof(HDR_TCP));
             u   += g_ntohs(x16);
@@ -1383,7 +1378,8 @@ print_usage (FILE *output)
             "                         used as the default for unspecified fields.\n"
             "  -D                     the text before the packet starts with an I or an O,\n"
             "                         indicating that the packet is inbound or outbound.\n"
-            "                         This is only stored if the output format is pcapng.\n"
+            "                         This is used when generating dummy headers.\n"
+            "                         The indication is only stored if the output format is pcapng.\n"
             "  -a                     enable ASCII text dump identification.\n"
             "                         The start of the ASCII text dump can be identified\n"
             "                         and excluded from the packet data, even if it looks\n"
@@ -1399,6 +1395,7 @@ print_usage (FILE *output)
             "                         specify the exact type of encapsulation.\n"
             "                         Example: -l 7 for ARCNet packets.\n"
             "  -m <max-packet>        max packet length in output; default is %d\n"
+            "  -n                     use pcapng instead of pcap as output format.\n"
             "\n"
             "Prepend dummy header:\n"
             "  -e <l3pid>             prepend dummy Ethernet II header with specified L3PID\n"
@@ -1411,9 +1408,9 @@ print_usage (FILE *output)
             "  -4 <srcip>,<destip>    prepend dummy IPv4 header with specified\n"
             "                         dest and source address.\n"
             "                         Example: -4 10.0.0.1,10.0.0.2\n"
-            "  -6 <srcip>,<destip>    replace IPv6 header with specified\n"
+            "  -6 <srcip>,<destip>    prepend dummy IPv6 header with specified\n"
             "                         dest and source address.\n"
-            "                         Example: -6 fe80:0:0:0:202:b3ff:fe1e:8329,2001:0db8:85a3:0000:0000:8a2e:0370:7334\n"
+            "                         Example: -6 fe80::202:b3ff:fe1e:8329,2001:0db8:85a3::8a2e:0370:7334\n"
             "  -u <srcp>,<destp>      prepend dummy UDP header with specified\n"
             "                         source and destination ports (in DECIMAL).\n"
             "                         Automatically prepends Ethernet & IP headers as well.\n"
@@ -1437,7 +1434,6 @@ print_usage (FILE *output)
             "  -h                     display this help and exit.\n"
             "  -d                     show detailed debug of parser states.\n"
             "  -q                     generate no output at all (automatically disables -d).\n"
-            "  -n                     use pcapng instead of pcap as output format.\n"
             "",
             WTAP_MAX_PACKET_SIZE_STANDARD);
 }
@@ -1458,11 +1454,6 @@ parse_options (int argc, char *argv[])
         {0, 0, 0, 0 }
     };
     struct tm *now_tm;
-
-#ifdef _WIN32
-    arg_list_utf_16to8(argc, argv);
-    create_app_running_mutex();
-#endif /* _WIN32 */
 
     /* Get the compile-time version information string */
     comp_info_str = get_compiled_version_info(NULL, NULL);
@@ -1493,7 +1484,7 @@ parse_options (int argc, char *argv[])
             break;
         case 'd': if (!quiet) debug++; break;
         case 'D': has_direction = TRUE; break;
-        case 'q': quiet = TRUE; debug = FALSE; break;
+        case 'q': quiet = TRUE; debug = 0; break;
         case 'l': pcap_link_type = (guint32)strtol(optarg, NULL, 0); break;
         case 'm': max_offset = (guint32)strtol(optarg, NULL, 0); break;
         case 'n': use_pcapng = TRUE; break;
@@ -1519,7 +1510,6 @@ parse_options (int argc, char *argv[])
             break;
 
         case 'i':
-            hdr_ip = TRUE;
             hdr_ip_proto = strtol(optarg, &p, 10);
             if (p == optarg || *p != '\0' || hdr_ip_proto < 0 ||
                   hdr_ip_proto > 255) {
@@ -1528,7 +1518,6 @@ parse_options (int argc, char *argv[])
                 return EXIT_FAILURE;
             }
             hdr_ethernet = TRUE;
-            hdr_ethernet_proto = 0x800;
             break;
 
         case 's':
@@ -1569,10 +1558,8 @@ parse_options (int argc, char *argv[])
                 return EXIT_FAILURE;
             }
 
-            hdr_ip = TRUE;
             hdr_ip_proto = 132;
             hdr_ethernet = TRUE;
-            hdr_ethernet_proto = 0x800;
             break;
         case 'S':
             hdr_sctp = TRUE;
@@ -1612,10 +1599,8 @@ parse_options (int argc, char *argv[])
                 return EXIT_FAILURE;
             }
 
-            hdr_ip = TRUE;
             hdr_ip_proto = 132;
             hdr_ethernet = TRUE;
-            hdr_ethernet_proto = 0x800;
             break;
 
         case 't':
@@ -1646,10 +1631,8 @@ parse_options (int argc, char *argv[])
                 print_usage(stderr);
                 return EXIT_FAILURE;
             }
-            hdr_ip = TRUE;
             hdr_ip_proto = 17;
             hdr_ethernet = TRUE;
-            hdr_ethernet_proto = 0x800;
             break;
 
         case 'T':
@@ -1676,10 +1659,8 @@ parse_options (int argc, char *argv[])
                 print_usage(stderr);
                 return EXIT_FAILURE;
             }
-            hdr_ip = TRUE;
             hdr_ip_proto = 6;
             hdr_ethernet = TRUE;
-            hdr_ethernet_proto = 0x800;
             break;
 
         case 'a':
@@ -1709,12 +1690,12 @@ parse_options (int argc, char *argv[])
             if (c == '6')
             {
                 hdr_ipv6 = TRUE;
-                hdr_ethernet_proto = 0x86DD;
+                hdr_ip   = FALSE;
             }
             else
             {
-                hdr_ip = TRUE;
-                hdr_ethernet_proto = 0x800;
+                hdr_ip   = TRUE;
+                hdr_ipv6 = FALSE;
             }
             hdr_ethernet = TRUE;
 
@@ -1841,6 +1822,33 @@ parse_options (int argc, char *argv[])
     timecode_default = *now_tm;
     timecode_default.tm_isdst = -1; /* Unknown for now, depends on time given to the strptime() function */
 
+    if (hdr_ip_proto != -1 && !(hdr_ip || hdr_ipv6)) {
+        /* If -i <proto> option is specified without -4 or -6 then add the default IPv4 header */
+        hdr_ip = TRUE;
+    }
+
+    if (hdr_ip_proto == -1 && (hdr_ip || hdr_ipv6)) {
+        /* if -4 or -6 option is specified without an IP protocol then fail */
+        fprintf(stderr, "IP protocol requires a next layer protocol number\n");
+        return EXIT_FAILURE;
+    }
+
+    if ((hdr_tcp || hdr_udp || hdr_sctp) && !(hdr_ip || hdr_ipv6)) {
+        /*
+         * If TCP (-T), UDP (-u) or SCTP (-s/-S) header options are specified
+         * but none of IPv4 (-4) or IPv6 (-6) options then add an IPv4 header
+         */
+        hdr_ip = TRUE;
+    }
+
+    if (hdr_ip)
+    {
+        hdr_ethernet_proto = 0x0800;
+    } else if (hdr_ipv6)
+    {
+        hdr_ethernet_proto = 0x86DD;
+    }
+
     /* Display summary of our state */
     if (!quiet) {
         fprintf(stderr, "Input from: %s\n", input_filename);
@@ -1850,6 +1858,8 @@ parse_options (int argc, char *argv[])
         if (hdr_ethernet) fprintf(stderr, "Generate dummy Ethernet header: Protocol: 0x%0X\n",
                                   hdr_ethernet_proto);
         if (hdr_ip) fprintf(stderr, "Generate dummy IP header: Protocol: %ld\n",
+                            hdr_ip_proto);
+        if (hdr_ipv6) fprintf(stderr, "Generate dummy IPv6 header: Protocol: %ld\n",
                             hdr_ip_proto);
         if (hdr_udp) fprintf(stderr, "Generate dummy UDP header: Source port: %u. Dest port: %u\n",
                              hdr_src_port, hdr_dest_port);
@@ -1864,10 +1874,14 @@ parse_options (int argc, char *argv[])
     return EXIT_SUCCESS;
 }
 
-int
-main(int argc, char *argv[])
+static int
+real_main(int argc, char *argv[])
 {
     int ret = EXIT_SUCCESS;
+
+#ifdef _WIN32
+    create_app_running_mutex();
+#endif /* _WIN32 */
 
     if (parse_options(argc, argv) != EXIT_SUCCESS) {
         ret = EXIT_FAILURE;
@@ -1932,6 +1946,23 @@ clean_exit:
     return ret;
 }
 
+#ifdef _WIN32
+int
+wmain(int argc, wchar_t *wc_argv[])
+{
+    char **argv;
+
+    argv = arg_list_utf_16to8(argc, wc_argv);
+    return real_main(argc, argv);
+}
+#else
+int
+main(int argc, char *argv[])
+{
+    return real_main(argc, argv);
+}
+#endif
+
 /*
  * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
  *
@@ -1944,4 +1975,3 @@ clean_exit:
  * vi: set shiftwidth=4 tabstop=8 expandtab:
  * :indentSize=4:tabSize=8:noTabs=true:
  */
-

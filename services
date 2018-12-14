@@ -2080,7 +2080,7 @@ qip-login	2366/tcp/udp
 service-ctrl	2367/tcp/udp	# Service Control
 opentable	2368/tcp/udp	# OpenTable
 l3-hbmon	2370/tcp/udp	# L3-HBMon
-hp-rda		2371/tcp	# HP Remote Device Access
+rda		2371/tcp	# Remote Device Access
 lanmessenger	2372/tcp/udp	# LanMessenger
 remographlm	2373/tcp	# Remograph License Manager
 hydra		2374/tcp	# Hydra RPC
@@ -5224,6 +5224,7 @@ lm-instmgr	8205/tcp/udp	# LM Instmgr
 lm-dta		8206/tcp/udp	# LM Dta
 lm-sserver	8207/tcp/udp	# LM SServer
 lm-webwatcher	8208/tcp/udp	# LM Webwatcher
+aruba-papi	8211/udp	# Aruba Networks AP management
 rexecj		8230/tcp/udp	# RexecJ Server
 hncp-udp-port	8231/udp	# HNCP
 hncp-dtls-port	8232/udp	# HNCP over DTLS
@@ -5311,6 +5312,7 @@ acd-pm		8793/tcp/udp	# Accedian Performance Measurement
 sunwebadmin	8800/tcp/udp	# Sun Web Server Admin Service
 truecm		8804/tcp/udp
 pfcp		8805/udp	# Destination Port number for PFCP
+hes-clip	8807/udp	# HES-CLIP Interoperability protocol
 ssports-bcast	8808/udp	# STATSports Broadcast Service
 dxspider	8873/tcp/udp	# dxspider linking protocol
 cddbp-alt	8880/tcp/udp	# CDDBP
@@ -6062,6 +6064,7 @@ fairview	38202/tcp/udp	# Fairview Message Service
 agpolicy	38203/tcp/udp	# AppGate Policy Server
 ng-control	38412/sctp	# NG Control Plane (3GPP)
 xn-control	38422/sctp	# Xn Control Plane (3GPP)
+e1-interface	38462/sctp	# E1 signalling transport (3GPP)
 f1-control	38472/sctp	# F1 Control Plane (3GPP)
 sruth		38800/tcp	# Sruth is a service for the distribution of routinely- generated but arbitrary files based on a publish/subscribe distribution model and implemented using a peer-to-peer transport mechanism
 secrmmsafecopya	38865/tcp	# Security approval process for use of the secRMM SafeCopy program

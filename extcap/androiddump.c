@@ -443,11 +443,14 @@ static struct extcap_dumper extcap_dumper_open(char *fifo, int encap) {
         g_warning("Write to %s failed: %s", g_strerror(errno));
     }
 #else
+    wtap_dump_params params = WTAP_DUMP_PARAMS_INIT;
     int err = 0;
 
     wtap_init(FALSE);
 
-    extcap_dumper.dumper.wtap = wtap_dump_open(fifo, WTAP_FILE_TYPE_SUBTYPE_PCAP_NSEC, encap, PACKET_LENGTH, FALSE, &err);
+    params.encap = encap;
+    params.snaplen = PACKET_LENGTH;
+    extcap_dumper.dumper.wtap = wtap_dump_open(fifo, WTAP_FILE_TYPE_SUBTYPE_PCAP_NSEC, WTAP_UNCOMPRESSED, &params, &err);
     if (!extcap_dumper.dumper.wtap) {
         cfile_dump_open_failure_message("androiddump", fifo, err, WTAP_FILE_TYPE_SUBTYPE_PCAP_NSEC);
         exit(EXIT_CODE_CANNOT_SAVE_WIRETAP_DUMP);
@@ -505,14 +508,8 @@ static gboolean extcap_dumper_dump(struct extcap_dumper extcap_dumper,
         rec.rec_header.packet_header.caplen -= (guint32)sizeof(own_pcap_bluetooth_h4_header);
 
         buffer += sizeof(own_pcap_bluetooth_h4_header);
-        rec.rec_header.packet_header.pkt_encap = WTAP_ENCAP_BLUETOOTH_H4_WITH_PHDR;
     }
-    else if (extcap_dumper.encap == EXTCAP_ENCAP_ETHERNET) {
-        rec.rec_header.packet_header.pkt_encap = WTAP_ENCAP_ETHERNET;
-    }
-    else {
-        rec.rec_header.packet_header.pkt_encap = WTAP_ENCAP_WIRESHARK_UPPER_PDU;
-    }
+    rec.rec_header.packet_header.pkt_encap = extcap_dumper.encap;
 
     if (!wtap_dump(extcap_dumper.dumper.wtap, &rec, (const guint8 *) buffer, &err, &err_info)) {
         cfile_write_failure_message("androiddump", NULL, fifo, err, err_info,
@@ -1275,14 +1272,12 @@ static int list_config(char *interface) {
         printf("arg {number=%u}{call=--bt-forward-socket}{display=Forward Bluetooth Socket}{type=boolean}{default=false}\n", inc++);
         printf("arg {number=%u}{call=--bt-local-ip}{display=Bluetooth Local IP Address}{type=string}{default=127.0.0.1}\n", inc++);
         printf("arg {number=%u}{call=--bt-local-tcp-port}{display=Bluetooth Local TCP Port}{type=integer}{range=0,65535}{default=4330}{tooltip=Used to do \"adb forward tcp:LOCAL_TCP_PORT tcp:SERVER_TCP_PORT\"}\n", inc++);
-        printf("arg {number=%u}{call=--verbose}{display=Verbose/Debug output on console}{type=boolean}{default=false}\n", inc++);
         ret = EXIT_CODE_SUCCESS;
     } else  if (is_specified_interface(interface, INTERFACE_ANDROID_BLUETOOTH_HCIDUMP) ||
             is_specified_interface(interface, INTERFACE_ANDROID_BLUETOOTH_BTSNOOP_NET) ||
             is_specified_interface(interface, INTERFACE_ANDROID_TCPDUMP)) {
         printf("arg {number=%u}{call=--adb-server-ip}{display=ADB Server IP Address}{type=string}{default=127.0.0.1}\n", inc++);
         printf("arg {number=%u}{call=--adb-server-tcp-port}{display=ADB Server TCP Port}{type=integer}{range=0,65535}{default=5037}\n", inc++);
-        printf("arg {number=%u}{call=--verbose}{display=Verbose/Debug output on console}{type=boolean}{default=false}\n", inc++);
         ret = EXIT_CODE_SUCCESS;
     } else if (is_logcat_interface(interface)) {
         printf("arg {number=%u}{call=--adb-server-ip}{display=ADB Server IP Address}{type=string}{default=127.0.0.1}\n", inc++);
@@ -1290,14 +1285,12 @@ static int list_config(char *interface) {
         printf("arg {number=%u}{call=--logcat-text}{display=Use text logcat}{type=boolean}{default=false}\n", inc++);
         printf("arg {number=%u}{call=--logcat-ignore-log-buffer}{display=Ignore log buffer}{type=boolean}{default=false}\n", inc++);
         printf("arg {number=%u}{call=--logcat-custom-options}{display=Custom logcat parameters}{type=string}\n", inc++);
-        printf("arg {number=%u}{call=--verbose}{display=Verbose/Debug output on console}{type=boolean}{default=false}\n", inc++);
         ret = EXIT_CODE_SUCCESS;
     } else if (is_logcat_text_interface(interface)) {
         printf("arg {number=%u}{call=--adb-server-ip}{display=ADB Server IP Address}{type=string}{default=127.0.0.1}\n", inc++);
         printf("arg {number=%u}{call=--adb-server-tcp-port}{display=ADB Server TCP Port}{type=integer}{range=0,65535}{default=5037}\n", inc++);
         printf("arg {number=%u}{call=--logcat-ignore-log-buffer}{display=Ignore log buffer}{type=boolean}{default=false}\n", inc++);
         printf("arg {number=%u}{call=--logcat-custom-options}{display=Custom logcat parameters}{type=string}\n", inc++);
-        printf("arg {number=%u}{call=--verbose}{display=Verbose/Debug output on console}{type=boolean}{default=false}\n", inc++);
         ret = EXIT_CODE_SUCCESS;
     }
 
@@ -2485,7 +2478,7 @@ static int capture_android_tcpdump(char *interface, char *fifo,
     return EXIT_CODE_SUCCESS;
 }
 
-int main(int argc, char **argv) {
+int real_main(int argc, char **argv) {
     int              ret = EXIT_CODE_GENERIC;
     int              option_idx = 0;
     int              result;
@@ -2512,8 +2505,6 @@ int main(int argc, char **argv) {
 
 #ifdef _WIN32
     WSADATA          wsaData;
-
-    attach_parent_console();
 #endif  /* _WIN32 */
 
     cmdarg_err_init(failure_warning_message, failure_warning_message);
@@ -2753,13 +2744,19 @@ end:
 }
 
 #ifdef _WIN32
-int _stdcall
-WinMain (struct HINSTANCE__ *hInstance,
-         struct HINSTANCE__ *hPrevInstance,
-         char               *lpszCmdLine,
-         int                 nCmdShow)
+int
+wmain(int argc, wchar_t *wc_argv[])
 {
-    return main(__argc, __argv);
+    char **argv;
+
+    argv = arg_list_utf_16to8(argc, wc_argv);
+    return real_main(argc, argv);
+}
+#else
+int
+main(int argc, char *argv[])
+{
+    return real_main(argc, argv);
 }
 #endif
 

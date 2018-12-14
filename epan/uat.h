@@ -301,12 +301,13 @@ void uat_cleanup(void);
 /** Populate a uat using its file.
  *
  * @param uat_in Pointer to a uat. Must not be NULL.
+ * @param filename Filename to load, NULL to fetch from current profile.
  * @param err Upon failure, points to an error string.
  *
  * @return TRUE on success, FALSE on failure.
  */
 WS_DLL_PUBLIC
-gboolean uat_load(uat_t* uat_in, char** err);
+gboolean uat_load(uat_t* uat_in, const gchar *filename, char** err);
 
 /** Create or update a single uat entry using a string.
  *
@@ -342,6 +343,8 @@ WS_DLL_PUBLIC
 gboolean uat_fld_chk_num_dec(void*, const char*, unsigned, const void*, const void*, char** err);
 WS_DLL_PUBLIC
 gboolean uat_fld_chk_num_hex(void*, const char*, unsigned, const void*, const void*, char** err);
+WS_DLL_PUBLIC
+gboolean uat_fld_chk_num_signed_dec(void*, const char*, unsigned, const void*, const void*, char** err);
 WS_DLL_PUBLIC
 gboolean uat_fld_chk_bool(void*, const char*, unsigned, const void*, const void*, char** err);
 WS_DLL_PUBLIC
@@ -508,19 +511,34 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, char** out_ptr, 
 
 /*
  * DEC Macros,
- *   a decimal number contained in
+ *   an unsigned decimal number contained in (((rec_t*)rec)->(field_name))
  */
 #define UAT_DEC_CB_DEF(basename,field_name,rec_t) \
 static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 	char* tmp_str = g_strndup(buf,len); \
-	((rec_t*)rec)->field_name = (guint)strtol(tmp_str,NULL,10); \
+	ws_strtou32(tmp_str, NULL, &((rec_t*)rec)->field_name); \
+	g_free(tmp_str); } \
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
+	*out_ptr = g_strdup_printf("%u",((rec_t*)rec)->field_name); \
+	*out_len = (unsigned)strlen(*out_ptr); }
+
+#define UAT_FLD_DEC(basename,field_name,title,desc) \
+	{#field_name, title, PT_TXTMOD_STRING,{uat_fld_chk_num_dec,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
+
+/*
+ *   and a *signed* decimal number contained in (((rec_t*)rec)->(field_name))
+ */
+#define UAT_SIGNED_DEC_CB_DEF(basename,field_name,rec_t) \
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
+	char* tmp_str = g_strndup(buf,len); \
+	ws_strtoi32(tmp_str, NULL, &((rec_t*)rec)->field_name); \
 	g_free(tmp_str); } \
 static void basename ## _ ## field_name ## _tostr_cb(void* rec, char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 	*out_ptr = g_strdup_printf("%d",((rec_t*)rec)->field_name); \
 	*out_len = (unsigned)strlen(*out_ptr); }
 
-#define UAT_FLD_DEC(basename,field_name,title,desc) \
-	{#field_name, title, PT_TXTMOD_STRING,{uat_fld_chk_num_dec,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
+#define UAT_FLD_SIGNED_DEC(basename,field_name,title,desc) \
+	{#field_name, title, PT_TXTMOD_STRING,{uat_fld_chk_num_signed_dec,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
 
 #define UAT_FLD_NONE(basename,field_name,title,desc) \
 	{#field_name, title, PT_TXTMOD_NONE,{uat_fld_chk_num_dec,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
@@ -528,7 +546,7 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, char** out_ptr, 
 
 /*
  * HEX Macros,
- *   an hexadecimal number contained in
+ *   an unsigned hexadecimal number contained in (((rec_t*)rec)->(field_name))
  */
 #define UAT_HEX_CB_DEF(basename,field_name,rec_t) \
 static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
@@ -544,7 +562,7 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, char** out_ptr, 
 
 /*
  * BOOL Macros,
- *   an boolean value contained in
+ *   an boolean value contained in (((rec_t*)rec)->(field_name))
  */
 #define UAT_BOOL_CB_DEF(basename,field_name,rec_t) \
 static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
@@ -621,7 +639,7 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, char** out_ptr, 
 
 /*
  * Color Macros,
- *   an #RRGGBB color value contained in
+ *   an #RRGGBB color value contained in (((rec_t*)rec)->(field_name))
  */
 #define UAT_COLOR_CB_DEF(basename,field_name,rec_t) \
 static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\

@@ -84,7 +84,9 @@ class FunnelStatistics;
 class WelcomePage;
 class PacketList;
 class ProtoTree;
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
 class WirelessFrame;
+#endif
 class FilterExpressionToolBar;
 
 class QAction;
@@ -169,7 +171,9 @@ private:
     DisplayFilterCombo *df_combo_box_;
     CaptureFile capture_file_;
     QFont mono_font_;
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
     WirelessFrame *wireless_frame_;
+#endif
     // XXX - packet_list_ and proto_tree_ should
     // probably be full-on values instead of pointers.
     PacketList *packet_list_;
@@ -237,7 +241,7 @@ private:
     void exportDissections(export_type_e export_type);
 
 #ifdef Q_OS_WIN
-    void fileAddExtension(QString &file_name, int file_type, bool compressed);
+    void fileAddExtension(QString &file_name, int file_type, wtap_compression_type compression_type);
 #endif // Q_OS_WIN
     bool testCaptureFileClose(QString before_what, FileCloseContext context = Default);
     void captureStop();
@@ -442,7 +446,7 @@ private slots:
     void on_actionFilePrint_triggered();
 
     void on_actionFileExportPDU_triggered();
-    void on_actionFileExportSSLSessionKeys_triggered();
+    void on_actionFileExportTLSSessionKeys_triggered();
 
     void actionEditCopyTriggered(MainWindow::CopySelected selection_type);
     void on_actionCopyAllVisibleItems_triggered();
@@ -546,7 +550,7 @@ private slots:
     void openFollowStreamDialog(follow_type_t type, int stream_num = -1);
     void on_actionAnalyzeFollowTCPStream_triggered();
     void on_actionAnalyzeFollowUDPStream_triggered();
-    void on_actionAnalyzeFollowSSLStream_triggered();
+    void on_actionAnalyzeFollowTLSStream_triggered();
     void on_actionAnalyzeFollowHTTPStream_triggered();
     void statCommandExpertInfo(const char *, void *);
     void on_actionAnalyzeExpertInfo_triggered();

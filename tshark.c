@@ -94,6 +94,7 @@
 #include <epan/rtd_table.h>
 #include <epan/ex-opt.h>
 #include <epan/exported_pdu.h>
+#include <epan/secrets.h>
 
 #include "capture_opts.h"
 
@@ -140,9 +141,7 @@
  */
 #define LONGOPT_COLOR (65536+1000)
 #define LONGOPT_NO_DUPLICATE_KEYS (65536+1001)
-#ifdef HAVE_JSONGLIB
 #define LONGOPT_ELASTIC_MAPPING_FILTER (65536+1002)
-#endif
 
 #if 0
 #define tshark_debug(...) g_warning(__VA_ARGS__)
@@ -370,7 +369,7 @@ print_usage(FILE *output)
   fprintf(output, "  -Y <display filter>      packet displaY filter in Wireshark display filter\n");
   fprintf(output, "                           syntax\n");
   fprintf(output, "  -n                       disable all name resolutions (def: all enabled)\n");
-  fprintf(output, "  -N <name resolve flags>  enable specific name resolution(s): \"mnNtCd\"\n");
+  fprintf(output, "  -N <name resolve flags>  enable specific name resolution(s): \"mnNtdv\"\n");
   fprintf(output, "  -d %s ...\n", DECODE_AS_ARG_TEMPLATE);
   fprintf(output, "                           \"Decode As\", see the man page for details\n");
   fprintf(output, "                           Example: tcp.port==8888,http\n");
@@ -439,10 +438,8 @@ print_usage(FILE *output)
   fprintf(output, "  --no-duplicate-keys      If -T json is specified, merge duplicate keys in an object\n");
   fprintf(output, "                           into a single key with as value a json array containing all\n");
   fprintf(output, "                           values\n");
-#ifdef HAVE_JSONGLIB
   fprintf(output, "  --elastic-mapping-filter <protocols> If -G elastic-mapping is specified, put only the\n");
   fprintf(output, "                           specified protocols within the mapping file\n");
-#endif
 
   fprintf(output, "\n");
   fprintf(output, "Miscellaneous:\n");
@@ -479,9 +476,7 @@ glossary_option_help(void)
   fprintf(output, "  -G column-formats        dump column format codes and exit\n");
   fprintf(output, "  -G decodes               dump \"layer type\"/\"decode as\" associations and exit\n");
   fprintf(output, "  -G dissector-tables      dump dissector table names, types, and properties\n");
-#ifdef HAVE_JSONGLIB
   fprintf(output, "  -G elastic-mapping       dump ElasticSearch mapping file\n");
-#endif
   fprintf(output, "  -G fieldcount            dump count of header fields and exit\n");
   fprintf(output, "  -G fields                dump fields glossary and exit\n");
   fprintf(output, "  -G ftypes                dump field type basic and descriptive names\n");
@@ -667,8 +662,8 @@ must_do_dissection(dfilter_t *rfcode, dfilter_t *dfcode,
       tap_listeners_require_dissection() || dissect_color;
 }
 
-int
-main(int argc, char *argv[])
+static int
+real_main(int argc, char *argv[])
 {
   GString             *comp_info_str;
   GString             *runtime_info_str;
@@ -683,9 +678,7 @@ main(int argc, char *argv[])
     {"export-objects", required_argument, NULL, LONGOPT_EXPORT_OBJECTS},
     {"color", no_argument, NULL, LONGOPT_COLOR},
     {"no-duplicate-keys", no_argument, NULL, LONGOPT_NO_DUPLICATE_KEYS},
-#ifdef HAVE_JSONGLIB
     {"elastic-mapping-filter", required_argument, NULL, LONGOPT_ELASTIC_MAPPING_FILTER},
-#endif
     {0, 0, 0, 0 }
   };
   gboolean             arg_error = FALSE;
@@ -729,9 +722,7 @@ main(int argc, char *argv[])
   gchar               *volatile pdu_export_arg = NULL;
   char                *volatile exp_pdu_filename = NULL;
   exp_pdu_t            exp_pdu_tap_data;
-#ifdef HAVE_JSONGLIB
   const gchar*         elastic_mapping_filter = NULL;
-#endif
 
 /*
  * The leading + ensures that getopt_long() does not permute the argv[]
@@ -764,7 +755,6 @@ main(int argc, char *argv[])
   cmdarg_err_init(failure_warning_message, failure_message_cont);
 
 #ifdef _WIN32
-  arg_list_utf_16to8(argc, argv);
   create_app_running_mutex();
 #endif /* _WIN32 */
 
@@ -867,11 +857,9 @@ main(int argc, char *argv[])
     case 'X':
       ex_opt_add(optarg);
       break;
-#ifdef HAVE_JSONGLIB
     case LONGOPT_ELASTIC_MAPPING_FILTER:
       elastic_mapping_filter = optarg;
       break;
-#endif
     default:
       break;
     }
@@ -923,7 +911,7 @@ main(int argc, char *argv[])
      "-G" flag, as the "-G" flag dumps information registered by the
      dissectors, and we must do it before we read the preferences, in
      case any dissectors register preferences. */
-  if (!epan_init(NULL, NULL)) {
+  if (!epan_init(NULL, NULL, TRUE)) {
     exit_status = INIT_FAILED;
     goto clean_exit;
   }
@@ -974,10 +962,8 @@ main(int argc, char *argv[])
         write_prefs(NULL);
       else if (strcmp(argv[2], "dissector-tables") == 0)
         dissector_dump_dissector_tables();
-#ifdef HAVE_JSONGLIB
       else if (strcmp(argv[2], "elastic-mapping") == 0)
         proto_registrar_dump_elastic(elastic_mapping_filter);
-#endif
       else if (strcmp(argv[2], "fieldcount") == 0) {
         /* return value for the test suite */
         exit_status = proto_registrar_dump_fieldcount();
@@ -1554,29 +1540,31 @@ main(int argc, char *argv[])
 
 #ifdef HAVE_LIBPCAP
   if (!global_capture_opts.saving_to_file) {
+#else
+  if (!output_file_name) {
+#endif
     /* We're not saving the capture to a file; if "-q" wasn't specified,
        we should print packet information */
     if (!quiet)
       print_packet_info = TRUE;
   } else {
+#ifdef HAVE_LIBPCAP
+    const char *save_file = global_capture_opts.save_file;
+#else
+    const char *save_file = output_file_name;
+#endif
     /* We're saving to a file; if we're writing to the standard output.
        and we'll also be writing dissected packets to the standard
        output, reject the request.  At best, we could redirect that
        to the standard error; we *can't* write both to the standard
        output and have either of them be useful. */
-    if (strcmp(global_capture_opts.save_file, "-") == 0 && print_packet_info) {
+    if (strcmp(save_file, "-") == 0 && print_packet_info) {
       cmdarg_err("You can't write both raw packet data and dissected packets"
           " to the standard output.");
       exit_status = INVALID_OPTION;
       goto clean_exit;
     }
   }
-#else
-  /* We're not saving the capture to a file; if "-q" wasn't specified,
-     we should print packet information */
-  if (!quiet)
-    print_packet_info = TRUE;
-#endif
 
 #ifndef HAVE_LIBPCAP
   if (capture_option_specified)
@@ -2226,8 +2214,6 @@ main(int argc, char *argv[])
 #endif
   }
 
-  g_free(cf_name);
-
   if (cfile.provider.frames != NULL) {
     free_frame_data_sequence(cfile.provider.frames);
     cfile.provider.frames = NULL;
@@ -2245,6 +2231,7 @@ main(int argc, char *argv[])
   output_fields = NULL;
 
 clean_exit:
+  g_free(cf_name);
   destroy_print_stream(print_stream);
 #ifdef HAVE_LIBPCAP
   capture_opts_cleanup(&global_capture_opts);
@@ -2259,6 +2246,23 @@ clean_exit:
   dfilter_free(dfcode);
   return exit_status;
 }
+
+#ifdef _WIN32
+int
+wmain(int argc, wchar_t *wc_argv[])
+{
+  char **argv;
+
+  argv = arg_list_utf_16to8(argc, wc_argv);
+  return real_main(argc, argv);
+}
+#else
+int
+main(int argc, char *argv[])
+{
+  return real_main(argc, argv);
+}
+#endif
 
 /*#define USE_BROKEN_G_MAIN_LOOP*/
 
@@ -2405,7 +2409,7 @@ tshark_epan_new(capture_file *cf)
 static gboolean
 capture(void)
 {
-  gboolean          ret;
+  volatile gboolean ret = TRUE;
   guint             i;
   GString          *str;
 #ifdef USE_TSHARK_SELECT
@@ -2517,13 +2521,15 @@ capture(void)
       if (ret == -1)
       {
         fprintf(stderr, "%s: %s\n", "select()", g_strerror(errno));
-        return TRUE;
+        ret = TRUE;
+        loop_running = FALSE;
       } else if (ret == 1) {
 #endif
         /* Call the real handler */
         if (!pipe_input.input_cb(pipe_input.source, pipe_input.user_data)) {
           g_log(NULL, G_LOG_LEVEL_DEBUG, "input pipe closed");
-          return FALSE;
+          ret = FALSE;
+          loop_running = FALSE;
         }
 #ifdef USE_TSHARK_SELECT
       }
@@ -2538,10 +2544,10 @@ capture(void)
             "\n"
             "More information and workarounds can be found at\n"
             "https://wiki.wireshark.org/KnownBugs/OutOfMemory\n");
-    exit(1);
+    abort();
   }
   ENDTRY;
-  return TRUE;
+  return ret;
 }
 
 /* capture child detected an error */
@@ -3070,8 +3076,6 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
     gboolean out_file_name_res, int max_packet_count, gint64 max_byte_count)
 {
   gboolean     success = TRUE;
-  gint         linktype;
-  int          snapshot_length;
   wtap_dumper *pdh;
   guint32      framenum;
   int          err = 0, err_pass1 = 0;
@@ -3079,70 +3083,36 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
   gint64       data_offset;
   gboolean     filtering_tap_listeners;
   guint        tap_flags;
-  GArray                      *shb_hdrs = NULL;
-  wtapng_iface_descriptions_t *idb_inf = NULL;
-  GArray                      *nrb_hdrs = NULL;
+  wtap_dump_params params = WTAP_DUMP_PARAMS_INIT;
   wtap_rec     rec;
   Buffer       buf;
   epan_dissect_t *edt = NULL;
-  char                        *shb_user_appl;
+  char        *shb_user_appl;
 
   wtap_rec_init(&rec);
 
-  idb_inf = wtap_file_get_idb_info(cf->provider.wth);
-#ifdef PCAP_NG_DEFAULT
-  if (idb_inf->interface_data->len > 1) {
-    linktype = WTAP_ENCAP_PER_PACKET;
-  } else {
-    linktype = wtap_file_encap(cf->provider.wth);
-  }
-#else
-  linktype = wtap_file_encap(cf->provider.wth);
-#endif
   if (save_file != NULL) {
     /* Set up to write to the capture file. */
-    snapshot_length = wtap_snapshot_length(cf->provider.wth);
-    if (snapshot_length == 0) {
-      /* Snapshot length of input file not known. */
-      snapshot_length = WTAP_MAX_PACKET_SIZE_STANDARD;
-    }
-    tshark_debug("tshark: snapshot_length = %d", snapshot_length);
-
-    shb_hdrs = wtap_file_get_shb_for_new_file(cf->provider.wth);
-    nrb_hdrs = wtap_file_get_nrb_for_new_file(cf->provider.wth);
+    wtap_dump_params_init(&params, cf->provider.wth);
 
     /* If we don't have an application name add Tshark */
-    if (wtap_block_get_string_option_value(g_array_index(shb_hdrs, wtap_block_t, 0), OPT_SHB_USERAPPL, &shb_user_appl) != WTAP_OPTTYPE_SUCCESS) {
+    if (wtap_block_get_string_option_value(g_array_index(params.shb_hdrs, wtap_block_t, 0), OPT_SHB_USERAPPL, &shb_user_appl) != WTAP_OPTTYPE_SUCCESS) {
         /* this is free'd by wtap_block_free() later */
-        wtap_block_add_string_option_format(g_array_index(shb_hdrs, wtap_block_t, 0), OPT_SHB_USERAPPL, "TShark (Wireshark) %s", get_ws_vcs_version_info());
+        wtap_block_add_string_option_format(g_array_index(params.shb_hdrs, wtap_block_t, 0), OPT_SHB_USERAPPL, "TShark (Wireshark) %s", get_ws_vcs_version_info());
     }
 
-    if (linktype != WTAP_ENCAP_PER_PACKET &&
-        out_file_type == WTAP_FILE_TYPE_SUBTYPE_PCAP) {
-        tshark_debug("tshark: writing PCAP format to %s", save_file);
-        if (strcmp(save_file, "-") == 0) {
-          /* Write to the standard output. */
-          pdh = wtap_dump_open_stdout(out_file_type, linktype,
-              snapshot_length, FALSE /* compressed */, &err);
-        } else {
-          pdh = wtap_dump_open(save_file, out_file_type, linktype,
-              snapshot_length, FALSE /* compressed */, &err);
-        }
-    }
-    else {
-        tshark_debug("tshark: writing format type %d, to %s", out_file_type, save_file);
-        if (strcmp(save_file, "-") == 0) {
-          /* Write to the standard output. */
-          pdh = wtap_dump_open_stdout_ng(out_file_type, linktype,
-              snapshot_length, FALSE /* compressed */, shb_hdrs, idb_inf, nrb_hdrs, &err);
-        } else {
-          pdh = wtap_dump_open_ng(save_file, out_file_type, linktype,
-              snapshot_length, FALSE /* compressed */, shb_hdrs, idb_inf, nrb_hdrs, &err);
-        }
+    tshark_debug("tshark: writing format type %d, to %s", out_file_type, save_file);
+    if (strcmp(save_file, "-") == 0) {
+      /* Write to the standard output. */
+      pdh = wtap_dump_open_stdout(out_file_type, WTAP_UNCOMPRESSED, &params,
+                                  &err);
+    } else {
+      pdh = wtap_dump_open(save_file, out_file_type, WTAP_UNCOMPRESSED, &params,
+                           &err);
     }
 
-    g_free(idb_inf);
-    idb_inf = NULL;
+    g_free(params.idb_inf);
+    params.idb_inf = NULL;
 
     if (pdh == NULL) {
       /* We couldn't set up to write to the capture file. */
@@ -3159,8 +3129,6 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
         goto out;
       }
     }
-    g_free(idb_inf);
-    idb_inf = NULL;
     pdh = NULL;
   }
 
@@ -3310,8 +3278,7 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
                                           err, err_info, framenum,
                                           out_file_type);
               wtap_dump_close(pdh, &err);
-              wtap_block_array_free(shb_hdrs);
-              wtap_block_array_free(nrb_hdrs);
+              wtap_dump_params_cleanup(&params);
               exit(2);
             }
           }
@@ -3396,8 +3363,7 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
             cfile_write_failure_message("TShark", cf->filename, save_file,
                                         err, err_info, framenum, out_file_type);
             wtap_dump_close(pdh, &err);
-            wtap_block_array_free(shb_hdrs);
-            wtap_block_array_free(nrb_hdrs);
+            wtap_dump_params_cleanup(&params);
             exit(2);
           }
         }
@@ -3486,8 +3452,7 @@ out:
   wtap_close(cf->provider.wth);
   cf->provider.wth = NULL;
 
-  wtap_block_array_free(shb_hdrs);
-  wtap_block_array_free(nrb_hdrs);
+  wtap_dump_params_cleanup(&params);
 
   return success;
 }
@@ -4093,6 +4058,7 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
 
   wtap_set_cb_new_ipv4(cf->provider.wth, add_ipv4_name);
   wtap_set_cb_new_ipv6(cf->provider.wth, (wtap_new_ipv6_callback_t) add_ipv6_name);
+  wtap_set_cb_new_secrets(cf->provider.wth, secrets_wtap_callback);
 
   return CF_OK;
 

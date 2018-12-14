@@ -74,17 +74,16 @@ set_target_properties(wmem_test PROPERTIES
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
 )
 
-if(NOT WIN32)
-	install(FILES ${WMEM_PUBLIC_HEADERS}
-		DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan/wmem"
-	)
-endif()
+install(FILES ${WMEM_PUBLIC_HEADERS}
+	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan/wmem"
+)
 
 CHECKAPI(
 	NAME
 	  wmem
 	SWITCHES
-	  -g termoutput -build
+	  --group termoutput:1 --summary-group termoutput
+	  --build
 	SOURCES
 	  ${WMEM_FILES}
 )

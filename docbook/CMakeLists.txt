@@ -264,6 +264,7 @@ set(WSDG_FILES
 	wsdg_src/WSDG_chapter_libraries.asciidoc
 	wsdg_src/WSDG_chapter_quick_setup.asciidoc
 	wsdg_src/WSDG_chapter_sources.asciidoc
+	wsdg_src/WSDG_chapter_tests.asciidoc
 	wsdg_src/WSDG_chapter_tools.asciidoc
 	wsdg_src/WSDG_chapter_userinterface.asciidoc
 	wsdg_src/WSDG_chapter_works.asciidoc
@@ -288,6 +289,7 @@ set(WSUG_SOURCE
 	${WSUG_GRAPHICS}
 )
 
+# Ensure ws.css is available when the user tries to open generated .html files.
 if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 	add_custom_command(
 		OUTPUT ws.css
@@ -297,9 +299,12 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 		DEPENDS
 			${CMAKE_CURRENT_SOURCE_DIR}/ws.css
 	)
+	add_custom_target(copy_ws.css DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/ws.css)
+else()
+	add_custom_target(copy_ws.css)
 endif()
 
-set( WSUG_BUILT_DEPS ws.css)
+set( WSUG_BUILT_DEPS copy_ws.css)
 
 set(WSDG_SOURCE
 	${WSDG_FILES}
@@ -351,7 +356,7 @@ ADD_CUSTOM_COMMAND(
 		${WSLUA_MODULES}
 )
 
-set( WSDG_BUILT_DEPS ws.css wsluarm )
+set( WSDG_BUILT_DEPS copy_ws.css wsluarm )
 
 set( ASCIIDOC_CONF_FILES
 	attributes.asciidoc
@@ -525,7 +530,7 @@ add_custom_target(
 set_docbook_target_properties(news)
 
 if( ASCIIDOCTOR_FOUND )
-	ASCIIDOCTOR2HTML( release-notes.asciidoc ws.css )
+	ASCIIDOCTOR2HTML( release-notes.asciidoc copy_ws.css )
 	ASCIIDOCTOR2TXT( release-notes.asciidoc )
 endif()
 

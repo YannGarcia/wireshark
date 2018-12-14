@@ -49,10 +49,11 @@ add_lemon_files(LEMON_FILES DFILTER_FILES
 )
 
 #
-# All files are warning-clean.  (Let's keep it that way.)
+# We don't enable -Werror on generated code to make the build a
+# little less fragile when configured warnings change.
 #
 set_source_files_properties(
-	${DFILTER_FILES}
+	${DFILTER_NONGENERATED_FILES}
 	PROPERTIES
 	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
@@ -64,11 +65,9 @@ set_target_properties(dfilter PROPERTIES
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
 )
 
-if(NOT WIN32)
-	install(FILES ${DFILTER_PUBLIC_HEADERS}
-		DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan/dfilter"
-	)
-endif()
+install(FILES ${DFILTER_PUBLIC_HEADERS}
+	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/epan/dfilter"
+)
 
 CHECKAPI(
 	NAME

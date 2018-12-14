@@ -5854,6 +5854,28 @@ static gboolean ikev1_uat_data_update_cb(void* p, char** err) {
   return TRUE;
 }
 
+static void*
+ikev1_uat_data_copy_cb(void *dest, const void *source, size_t len _U_)
+{
+  const ikev1_uat_data_key_t* o = (const ikev1_uat_data_key_t*)source;
+  ikev1_uat_data_key_t* d = (ikev1_uat_data_key_t*)dest;
+
+  d->icookie = (guchar *)g_memdup(o->icookie, o->icookie_len);
+  d->icookie_len = o->icookie_len;
+  d->key = (guchar *)g_memdup(o->key, o->key_len);
+  d->key_len = o->key_len;
+
+  return dest;
+}
+
+static void
+ikev1_uat_data_free_cb(void *r)
+{
+  ikev1_uat_data_key_t *rec = (ikev1_uat_data_key_t *)r;
+  g_free(rec->icookie);
+  g_free(rec->key);
+}
+
 UAT_BUFFER_CB_DEF(ikev2_users, spii, ikev2_uat_data_t, key.spii, key.spii_len)
 UAT_BUFFER_CB_DEF(ikev2_users, spir, ikev2_uat_data_t, key.spir, key.spir_len)
 UAT_BUFFER_CB_DEF(ikev2_users, sk_ei, ikev2_uat_data_t, sk_ei, sk_ei_len)
@@ -5862,6 +5884,39 @@ UAT_VS_DEF(ikev2_users, encr_alg, ikev2_uat_data_t, guint, IKEV2_ENCR_3DES, IKEV
 UAT_BUFFER_CB_DEF(ikev2_users, sk_ai, ikev2_uat_data_t, sk_ai, sk_ai_len)
 UAT_BUFFER_CB_DEF(ikev2_users, sk_ar, ikev2_uat_data_t, sk_ar, sk_ar_len)
 UAT_VS_DEF(ikev2_users, auth_alg, ikev2_uat_data_t, guint, IKEV2_AUTH_HMAC_SHA1_96, IKEV2_AUTH_HMAC_SHA1_96_STR)
+
+static void*
+ikev2_uat_data_copy_cb(void *dest, const void *source, size_t len _U_)
+{
+  const ikev2_uat_data_t* o = (const ikev2_uat_data_t*)source;
+  ikev2_uat_data_t* d = (ikev2_uat_data_t*)dest;
+
+  d->key.spii = (guchar *)g_memdup(o->key.spii, o->key.spii_len);
+  d->key.spii_len = o->key.spii_len;
+
+  d->key.spir = (guchar *)g_memdup(o->key.spir, o->key.spir_len);
+  d->key.spir_len = o->key.spir_len;
+
+  d->encr_alg = o->encr_alg;
+  d->auth_alg = o->auth_alg;
+
+  d->sk_ei = (guchar *)g_memdup(o->sk_ei, o->sk_ei_len);
+  d->sk_ei_len = o->sk_ei_len;
+
+  d->sk_er = (guchar *)g_memdup(o->sk_er, o->sk_er_len);
+  d->sk_er_len = o->sk_er_len;
+
+  d->sk_ai = (guchar *)g_memdup(o->sk_ai, o->sk_ai_len);
+  d->sk_ai_len = o->sk_ai_len;
+
+  d->sk_ar = (guchar *)g_memdup(o->sk_ar, o->sk_ar_len);
+  d->sk_ar_len = o->sk_ar_len;
+
+  d->encr_spec = (ikev2_encr_alg_spec_t *)g_memdup(o->encr_spec, sizeof(ikev2_encr_alg_spec_t));
+  d->auth_spec = (ikev2_auth_alg_spec_t *)g_memdup(o->auth_spec, sizeof(ikev2_auth_alg_spec_t));
+
+  return dest;
+}
 
 static gboolean ikev2_uat_data_update_cb(void* p, char** err) {
   ikev2_uat_data_t *ud = (ikev2_uat_data_t *)p;
@@ -5915,6 +5970,18 @@ static gboolean ikev2_uat_data_update_cb(void* p, char** err) {
   }
 
   return TRUE;
+}
+
+static void
+ikev2_uat_data_free_cb(void *r)
+{
+  ikev2_uat_data_t *rec = (ikev2_uat_data_t *)r;
+  g_free(rec->key.spii);
+  g_free(rec->key.spir);
+  g_free(rec->sk_ei);
+  g_free(rec->sk_er);
+  g_free(rec->sk_ai);
+  g_free(rec->sk_ar);
 }
 
 void
@@ -6279,7 +6346,7 @@ proto_register_isakmp(void)
         NULL, HFILL }},
     { &hf_isakmp_notify_data_rohc_attr.type,
       { "ROHC Attribute Type", "isakmp.notify.data.rohc.attr.type",
-        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, VALS(rohc_attr_type), 0x00,
+        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, RVALS(rohc_attr_type), 0x00,
         NULL, HFILL }},
     { &hf_isakmp_notify_data_rohc_attr.format,
       { "ROHC Format", "isakmp.notify.data.rohc.attr.format",
@@ -6341,7 +6408,7 @@ proto_register_isakmp(void)
         NULL, HFILL }},
     { &hf_isakmp_notify_data_signature_hash_algorithms,
       { "Supported Signature Hash Algorithm", "isakmp.notify.data.signature_hash_algorithms",
-        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, VALS(signature_hash_algorithms), 0x0,
+        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, RVALS(signature_hash_algorithms), 0x0,
         NULL, HFILL }},
 
     { &hf_isakmp_delete_doi,
@@ -6592,7 +6659,7 @@ proto_register_isakmp(void)
         NULL, HFILL }},
     { &hf_isakmp_ipsec_attr.type,
       { "Type", "isakmp.ipsec.attr.type",
-        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, VALS(ipsec_attr_type), 0x00,
+        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, RVALS(ipsec_attr_type), 0x00,
         "IPsec Attribute type", HFILL }},
     { &hf_isakmp_ipsec_attr.format,
       { "Format", "isakmp.ipsec.attr.format",
@@ -6682,7 +6749,7 @@ proto_register_isakmp(void)
         NULL, HFILL }},
     { &hf_isakmp_resp_lifetime_ipsec_attr.type,
       { "Type", "isakmp.notify.data.resp_lifetime.ipsec.attr.type",
-        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, VALS(ipsec_attr_type), 0x00,
+        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, RVALS(ipsec_attr_type), 0x00,
         "IPsec Attribute type", HFILL }},
     { &hf_isakmp_resp_lifetime_ipsec_attr.format,
       { "Format", "isakmp.notify.data.resp_lifetime.ipsec.attr.format",
@@ -6721,7 +6788,7 @@ proto_register_isakmp(void)
         NULL, HFILL }},
     { &hf_isakmp_ike_attr.type,
       { "Type", "isakmp.ike.attr.type",
-        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, VALS(ike_attr_type), 0x00,
+        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, RVALS(ike_attr_type), 0x00,
         "IKEv1 Attribute type", HFILL }},
     { &hf_isakmp_ike_attr.format,
       { "Format", "isakmp.ike.attr.format",
@@ -6816,7 +6883,7 @@ proto_register_isakmp(void)
         NULL, HFILL }},
     { &hf_isakmp_resp_lifetime_ike_attr.type,
       { "Type", "isakmp.notify.data.resp_lifetime.ike.attr.type",
-        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, VALS(ike_attr_type), 0x00,
+        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, RVALS(ike_attr_type), 0x00,
         "IKEv1 Attribute type", HFILL }},
     { &hf_isakmp_resp_lifetime_ike_attr.format,
       { "Format", "isakmp.notify.data.resp_lifetime.ike.attr.format",
@@ -6886,7 +6953,7 @@ proto_register_isakmp(void)
         "IKEv2 Transform Attribute", HFILL }},
     { &hf_isakmp_ike2_attr.type,
       { "Type", "isakmp.ike2.attr.type",
-        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, VALS(transform_ike2_attr_type), 0x00,
+        FT_UINT16, BASE_RANGE_STRING | BASE_DEC, RVALS(transform_ike2_attr_type), 0x00,
         "IKEv2 Transform Attribute type", HFILL }},
     { &hf_isakmp_ike2_attr.format,
       { "Format", "isakmp.ike2.attr.format",
@@ -7255,9 +7322,9 @@ proto_register_isakmp(void)
       &num_ikev1_uat_data,
       UAT_AFFECTS_DISSECTION, /* affects dissection of packets, but not set of named fields */
       "ChIKEv1DecryptionSection",
-      NULL,
+      ikev1_uat_data_copy_cb,
       ikev1_uat_data_update_cb,
-      NULL,
+      ikev1_uat_data_free_cb,
       NULL,
       NULL,
       ikev1_uat_flds);
@@ -7276,9 +7343,9 @@ proto_register_isakmp(void)
       &num_ikev2_uat_data,
       UAT_AFFECTS_DISSECTION, /* affects dissection of packets, but not set of named fields */
       "ChIKEv2DecryptionSection",
-      NULL,
+      ikev2_uat_data_copy_cb,
       ikev2_uat_data_update_cb,
-      NULL,
+      ikev2_uat_data_free_cb,
       NULL,
       NULL,
       ikev2_uat_flds);

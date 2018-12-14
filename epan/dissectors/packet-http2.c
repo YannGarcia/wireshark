@@ -1106,6 +1106,33 @@ get_http2_session(packet_info *pinfo)
 }
 
 #ifdef HAVE_NGHTTP2
+guint32
+http2_get_stream_id(packet_info *pinfo)
+{
+    conversation_t *conversation;
+    http2_session_t *h2session;
+
+    conversation = find_conversation_pinfo(pinfo, 0);
+    if (!conversation) {
+        return 0;
+    }
+
+    h2session = (http2_session_t*)conversation_get_proto_data(conversation, proto_http2);
+    if (!h2session) {
+        return 0;
+    }
+
+    return h2session->current_stream_id;
+}
+#else /* ! HAVE_NGHTTP2 */
+guint32
+http2_get_stream_id(packet_info *pinfo _U_)
+{
+    return 0;
+}
+#endif /* ! HAVE_NGHTTP2 */
+
+#ifdef HAVE_NGHTTP2
 static guint32
 select_http2_flow_index(packet_info *pinfo, http2_session_t *h2session)
 {
@@ -2340,7 +2367,7 @@ dissect_http2_settings(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *http2_
 
     while(tvb_reported_length_remaining(tvb, offset) > 0){
 
-        ti_settings = proto_tree_add_item(http2_tree, hf_http2_settings, tvb, offset, 5, ENC_NA);
+        ti_settings = proto_tree_add_item(http2_tree, hf_http2_settings, tvb, offset, 6, ENC_NA);
         settings_tree = proto_item_add_subtree(ti_settings, ett_http2_settings);
         proto_tree_add_item(settings_tree, hf_http2_settings_identifier, tvb, offset, 2, ENC_BIG_ENDIAN);
         settingsid = tvb_get_ntohs(tvb, offset);
@@ -3349,11 +3376,11 @@ proto_reg_handoff_http2(void)
     /*
      * SSL/TLS Application-Layer Protocol Negotiation (ALPN) protocol ID.
      */
-    dissector_add_string("ssl.handshake.extensions_alpn_str", "h2", http2_handle);
+    dissector_add_string("tls.alpn", "h2", http2_handle);
     dissector_add_string("http.upgrade", "h2", http2_handle);
     dissector_add_string("http.upgrade", "h2c", http2_handle);
 
-    heur_dissector_add("ssl", dissect_http2_heur_ssl, "HTTP2 over SSL", "http2_ssl", proto_http2, HEURISTIC_ENABLE);
+    heur_dissector_add("tls", dissect_http2_heur_ssl, "HTTP2 over TLS", "http2_tls", proto_http2, HEURISTIC_ENABLE);
     heur_dissector_add("http", dissect_http2_heur, "HTTP2 over TCP", "http2_tcp", proto_http2, HEURISTIC_ENABLE);
 
     stats_tree_register("http2", "http2", "HTTP2", 0, http2_stats_tree_packet, http2_stats_tree_init, NULL);

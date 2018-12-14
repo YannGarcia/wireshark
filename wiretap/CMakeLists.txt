@@ -14,6 +14,7 @@ set(WIRETAP_PUBLIC_HEADERS
 	merge.h
 	pcap-encap.h
 	pcapng_module.h
+	secrets-types.h
 	wtap.h
 	wtap_opttypes.h
 )
@@ -156,24 +157,22 @@ target_link_libraries(wiretap ${wiretap_LIBS})
 
 install(TARGETS wiretap
 	EXPORT WiresharkTargets
+	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-if(NOT WIN32)
-	install(FILES ${WIRETAP_PUBLIC_HEADERS}
-		DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/wiretap"
-	)
-endif()
+install(FILES ${WIRETAP_PUBLIC_HEADERS}
+	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CPACK_PACKAGE_NAME}/wiretap"
+)
 
 CHECKAPI(
 	NAME
 	  wiretap
 	SWITCHES
-## 'abort' checking disabled for now pending resolution of existing use of g_assert & g_error
-##	  -g abort -g termoutput
-	  -g termoutput -build
+	  --group abort:10 --summary-group abort
+	  --group termoutput:1 --summary-group termoutput
+	  --build
 	SOURCES
 	  ${WIRETAP_NONGENERATED_FILES}
 # LEX files commented out due to use of malloc, free etc.

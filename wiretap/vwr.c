@@ -871,17 +871,6 @@ static gboolean vwr_read(wtap *wth, int *err, gchar **err_info, gint64 *data_off
                               wth->rec_data, vwr, IS_TX, log_mode, err, err_info))
        return FALSE;
 
-    /* If the per-file encapsulation isn't known, set it to this packet's encapsulation. */
-    /* If it *is* known, and it isn't this packet's encapsulation, set it to             */
-    /*  WTAP_ENCAP_PER_PACKET, as this file doesn't have a single encapsulation for all  */
-    /*  packets in the file.                                                             */
-    if (wth->file_encap == WTAP_ENCAP_UNKNOWN)
-        wth->file_encap = wth->rec.rec_header.packet_header.pkt_encap;
-    else {
-        if (wth->file_encap != wth->rec.rec_header.packet_header.pkt_encap)
-            wth->file_encap = WTAP_ENCAP_PER_PACKET;
-    }
-
     return TRUE;
 }
 
@@ -1693,7 +1682,6 @@ static gboolean vwr_read_s2_W_rec(vwr_t *vwr, wtap_rec *record,
 
     record->ts.secs   = (time_t)s_sec;
     record->ts.nsecs  = (int)(s_usec * 1000);
-    record->rec_header.packet_header.pkt_encap = WTAP_ENCAP_IXVERIWAVE;
 
     record->rec_type = REC_TYPE_PACKET;
     record->presence_flags = WTAP_HAS_TS;
@@ -1874,7 +1862,6 @@ static gboolean vwr_read_s3_W_rec(vwr_t *vwr, wtap_rec *record,
 
         record->ts.secs   = (time_t)s_sec;
         record->ts.nsecs  = (int)(s_usec * 1000);
-        record->rec_header.packet_header.pkt_encap = WTAP_ENCAP_IXVERIWAVE;
 
         record->rec_type = REC_TYPE_PACKET;
         record->presence_flags = WTAP_HAS_TS;
@@ -2155,9 +2142,10 @@ static gboolean vwr_read_s3_W_rec(vwr_t *vwr, wtap_rec *record,
         end_time = e_time / NS_IN_US;                       /* convert to microseconds first */
 
         /* extract the 32 LSBs of the signature timestamp field */
-        m_ptr = &(rec[stats_offset+8+12]);
+        int m_ptr_offset = stats_offset + 8 + 12;
+        m_ptr = rec + m_ptr_offset;
         pay_off = 42;         /* 24 (MAC) + 8 (SNAP) + IP */
-        sig_off = find_signature(m_ptr, rec_size - 20, pay_off, flow_id, flow_seq);
+        sig_off = find_signature(m_ptr, rec_size - m_ptr_offset, pay_off, flow_id, flow_seq);
         if (m_ptr[sig_off] == 0xdd)
             sig_ts = get_signature_ts(m_ptr, sig_off, rec_size - vVW510021_W_STATS_TRAILER_LEN);
         else
@@ -2206,7 +2194,6 @@ static gboolean vwr_read_s3_W_rec(vwr_t *vwr, wtap_rec *record,
 
         record->ts.secs   = (time_t)s_sec;
         record->ts.nsecs  = (int)(s_usec * 1000);
-        record->rec_header.packet_header.pkt_encap = WTAP_ENCAP_IXVERIWAVE;
 
         record->rec_type = REC_TYPE_PACKET;
         record->presence_flags = WTAP_HAS_TS;
@@ -2716,7 +2703,6 @@ static gboolean vwr_read_rec_data_ethernet(vwr_t *vwr, wtap_rec *record,
 
     record->ts.secs   = (time_t)s_sec;
     record->ts.nsecs  = (int)(s_usec * 1000);
-    record->rec_header.packet_header.pkt_encap = WTAP_ENCAP_IXVERIWAVE;
 
     record->rec_type = REC_TYPE_PACKET;
     record->presence_flags = WTAP_HAS_TS;

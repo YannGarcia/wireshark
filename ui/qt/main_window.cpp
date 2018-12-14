@@ -316,6 +316,14 @@ MainWindow::MainWindow(QWidget *parent) :
 #ifdef HAVE_SOFTWARE_UPDATE
     update_action_ = new QAction(tr("Check for Updates" UTF8_HORIZONTAL_ELLIPSIS), main_ui_->menuHelp);
 #endif
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
+    wireless_frame_ = new WirelessFrame(this);
+    main_ui_->wirelessToolBar->addWidget(wireless_frame_);
+#else
+    removeToolBar(main_ui_->wirelessToolBar);
+    main_ui_->menuView->removeAction(main_ui_->actionViewWirelessToolbar);
+#endif
+
     setWindowIcon(wsApp->normalIcon());
     setTitlebarForCaptureFile();
     setMenusForCaptureFile();
@@ -401,12 +409,12 @@ MainWindow::MainWindow(QWidget *parent) :
 
     main_ui_->displayFilterToolBar->addWidget(filter_expression_toolbar_);
 
-    wireless_frame_ = new WirelessFrame(this);
-    main_ui_->wirelessToolBar->addWidget(wireless_frame_);
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
     connect(wireless_frame_, SIGNAL(pushAdapterStatus(const QString&)),
             main_ui_->statusBar, SLOT(pushTemporaryStatus(const QString&)));
     connect (wireless_frame_, SIGNAL(showWirelessPreferences(QString)),
              this, SLOT(showPreferencesDialog(QString)));
+#endif
 
     main_ui_->goToFrame->hide();
     connect(main_ui_->goToFrame, SIGNAL(visibilityChanged(bool)),
@@ -722,7 +730,9 @@ QMenu *MainWindow::createPopupMenu()
     QMenu *menu = new QMenu();
     menu->addAction(main_ui_->actionViewMainToolbar);
     menu->addAction(main_ui_->actionViewFilterToolbar);
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
     menu->addAction(main_ui_->actionViewWirelessToolbar);
+#endif
 
     if (!main_ui_->menuInterfaceToolbars->actions().isEmpty()) {
         QMenu *submenu = menu->addMenu(main_ui_->menuInterfaceToolbars->title());
@@ -1354,7 +1364,7 @@ bool MainWindow::saveCaptureFile(capture_file *cf, bool dont_reopen) {
                closes the current file and then opens and reloads the saved file,
                so make a copy and free it later. */
             file_name = cf->filename;
-            status = cf_save_records(cf, qUtf8Printable(file_name), cf->cd_t, cf->iscompressed,
+            status = cf_save_records(cf, qUtf8Printable(file_name), cf->cd_t, cf->compression_type,
                                      discard_comments, dont_reopen);
             switch (status) {
 
@@ -1390,7 +1400,7 @@ bool MainWindow::saveCaptureFile(capture_file *cf, bool dont_reopen) {
 bool MainWindow::saveAsCaptureFile(capture_file *cf, bool must_support_comments, bool dont_reopen) {
     QString file_name = "";
     int file_type;
-    gboolean compressed;
+    wtap_compression_type compression_type;
     cf_write_status_t status;
     gchar   *dirname;
     gboolean discard_comments = FALSE;
@@ -1437,11 +1447,11 @@ bool MainWindow::saveAsCaptureFile(capture_file *cf, bool must_support_comments,
             return false;
         }
         file_type = save_as_dlg.selectedFileType();
-        compressed = save_as_dlg.isCompressed();
+        compression_type = save_as_dlg.compressionType();
 
 #ifdef Q_OS_WIN
         // the Windows dialog does not fixup extensions, do it manually here.
-        fileAddExtension(file_name, file_type, compressed);
+        fileAddExtension(file_name, file_type, compression_type);
 #endif // Q_OS_WIN
 
 //#ifndef _WIN32
@@ -1454,7 +1464,7 @@ bool MainWindow::saveAsCaptureFile(capture_file *cf, bool must_support_comments,
 //#endif
 
         /* Attempt to save the file */
-        status = cf_save_records(cf, qUtf8Printable(file_name), file_type, compressed,
+        status = cf_save_records(cf, qUtf8Printable(file_name), file_type, compression_type,
                                  discard_comments, dont_reopen);
         switch (status) {
 
@@ -1490,7 +1500,7 @@ bool MainWindow::saveAsCaptureFile(capture_file *cf, bool must_support_comments,
 void MainWindow::exportSelectedPackets() {
     QString file_name = "";
     int file_type;
-    gboolean compressed;
+    wtap_compression_type compression_type;
     packet_range_t range;
     cf_write_status_t status;
     gchar   *dirname;
@@ -1564,10 +1574,10 @@ void MainWindow::exportSelectedPackets() {
         }
 
         file_type = esp_dlg.selectedFileType();
-        compressed = esp_dlg.isCompressed();
+        compression_type = esp_dlg.compressionType();
 #ifdef Q_OS_WIN
         // the Windows dialog does not fixup extensions, do it manually here.
-        fileAddExtension(file_name, file_type, compressed);
+        fileAddExtension(file_name, file_type, compression_type);
 #endif // Q_OS_WIN
 
 //#ifndef _WIN32
@@ -1580,7 +1590,7 @@ void MainWindow::exportSelectedPackets() {
 //#endif
 
         /* Attempt to save the file */
-        status = cf_export_specified_packets(capture_file_.capFile(), qUtf8Printable(file_name), &range, file_type, compressed);
+        status = cf_export_specified_packets(capture_file_.capFile(), qUtf8Printable(file_name), &range, file_type, compression_type);
         switch (status) {
 
         case CF_WRITE_OK:
@@ -1620,57 +1630,104 @@ void MainWindow::exportDissections(export_type_e export_type) {
 }
 
 #ifdef Q_OS_WIN
-void MainWindow::fileAddExtension(QString &file_name, int file_type, bool compressed) {
+/*
+ * Ensure that:
+ *
+ * If the file is to be compressed:
+ *
+ *    if there is a set of extensions used by the file type to be used,
+ *    the file name has one of those extensions followed by the extension
+ *    for the compression type to be used;
+ *
+ *    otherwise, the file name has the extension for the compression type
+ *    to be used;
+ *
+ * otherwise:
+ *
+ *    if there is a set of extensions used by the file type to be used,
+ *    the file name has one of those extensions.
+ */
+void MainWindow::fileAddExtension(QString &file_name, int file_type, wtap_compression_type compression_type) {
     QString file_name_lower;
     GSList  *extensions_list;
-    gboolean add_extension;
+    const char *compressed_file_extension;
+    gboolean add_extension_for_file_type;
 
-    /*
-     * Append the default file extension if there's none given by
-     * the user or if they gave one that's not one of the valid
-     * extensions for the file type.
-     */
+    /* Lower-case the file name, so the extension matching is case-insensitive. */
     file_name_lower = file_name.toLower();
+
+    /* Get a list of all extensions used for this file type; don't
+       include the ones with compression type extensions, as we
+       only want to check for the extension for the compression
+       type we'll be using. */
     extensions_list = wtap_get_file_extensions_list(file_type, FALSE);
+
+    /* Get the extension for the compression type we'll be using;
+       NULL is returned if the type isn't supported or compression
+       is not being done. */
+    compressed_file_extension = wtap_compression_type_extension(compression_type);
+
     if (extensions_list != NULL) {
         GSList *extension;
 
-        /* We have one or more extensions for this file type.
+        /* This file type has one or more extensions.
            Start out assuming we need to add the default one. */
-        add_extension = TRUE;
+        add_extension_for_file_type = TRUE;
 
-        /* OK, see if the file has one of those extensions. */
+        /* OK, see if the file has one of those extensions, followed
+           by the appropriate compression type extension if it's to be
+           compressed. */
         for (extension = extensions_list; extension != NULL;
              extension = g_slist_next(extension)) {
-            QString file_suffix = tr(".") + (char *)extension->data;
+            QString file_suffix = QString(".") + (char *)extension->data;
+            if (compressed_file_extension != NULL)
+                file_suffix += QString(".") + compressed_file_extension;
             if (file_name_lower.endsWith(file_suffix)) {
                 /*
-                 * The file name has one of the extensions for
-                 * this file type.
+                 * The file name has one of the extensions for this file
+                 * type, followed by a compression type extension if
+                 * appropriate, so we don't need to add an extension for
+                 * the file type or the compression type.
                  */
-                add_extension = FALSE;
-                break;
-            }
-            file_suffix += ".gz";
-            if (file_name_lower.endsWith(file_suffix)) {
-                /*
-                 * The file name has one of the extensions for
-                 * this file type.
-                 */
-                add_extension = FALSE;
+                add_extension_for_file_type = FALSE;
                 break;
             }
         }
     } else {
-        /* We have no extensions for this file type.  Don't add one. */
-        add_extension = FALSE;
-    }
-    if (add_extension) {
-        if (wtap_default_file_extension(file_type) != NULL) {
-            file_name += tr(".") + wtap_default_file_extension(file_type);
-            if (compressed) {
-                file_name += ".gz";
+        /* We have no extensions for this file type.  Just check
+           to see if we need to add an extension for the compressed
+           file type.
+
+           Start out assuming we do. */
+        add_extension_for_file_type = TRUE;
+        if (compressed_file_extension != NULL) {
+            QString file_suffix = QString(".") + compressed_file_extension;
+            if (file_name_lower.endsWith(file_suffix)) {
+                /*
+                 * The file name has the appropriate compressed file extension,
+                 * so we don't need to add an extension for the compression
+                 * type.
+                 */
+                add_extension_for_file_type = FALSE;
             }
+        }
+    }
+
+    /*
+     * If we need to add an extension for the file type or compressed
+     * file type, do so.
+     */
+    if (add_extension_for_file_type) {
+        if (wtap_default_file_extension(file_type) != NULL) {
+            /* This file type has a default extension; append it. */
+            file_name += QString(".") + wtap_default_file_extension(file_type);
+        }
+        if (compression_type != WTAP_UNCOMPRESSED) {
+            /*
+             * The file is to be compressed, so append the extension for
+             * its compression type.
+             */
+            file_name += QString(".") + compressed_file_extension;
         }
     }
 }
@@ -1962,7 +2019,9 @@ void MainWindow::initShowHideMainWidgets()
     show_hide_actions_->setExclusive(false);
     shmw_actions[main_ui_->actionViewMainToolbar] = main_ui_->mainToolBar;
     shmw_actions[main_ui_->actionViewFilterToolbar] = main_ui_->displayFilterToolBar;
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
     shmw_actions[main_ui_->actionViewWirelessToolbar] = main_ui_->wirelessToolBar;
+#endif
     shmw_actions[main_ui_->actionViewStatusBar] = main_ui_->statusBar;
     shmw_actions[main_ui_->actionViewPacketList] = packet_list_;
     shmw_actions[main_ui_->actionViewPacketDetails] = proto_tree_;
@@ -2167,8 +2226,43 @@ void MainWindow::setTitlebarForCaptureFile()
 
 QString MainWindow::replaceWindowTitleVariables(QString title)
 {
-    title.replace ("%P", get_profile_name());
-    title.replace ("%V", get_ws_vcs_version_info());
+    title.replace("%P", get_profile_name());
+    title.replace("%V", get_ws_vcs_version_info());
+
+    if (title.contains("%F")) {
+        // %F is file path of the capture file.
+        if (capture_file_.capFile()) {
+            // get_dirname() will overwrite the argument so make a copy first
+            char *filename = g_strdup(capture_file_.capFile()->filename);
+            QString file(get_dirname(filename));
+            g_free(filename);
+#ifndef _WIN32
+            // Substitute HOME with ~
+            QString homedir(g_getenv("HOME"));
+            if (!homedir.isEmpty()) {
+                homedir.remove(QRegExp("[/]+$"));
+                file.replace(homedir, "~");
+            }
+#endif
+            title.replace("%F", file);
+        } else {
+            // No file loaded, no folder name
+            title.remove("%F");
+        }
+    }
+
+    if (title.contains("%S")) {
+        // %S is a conditional separator (" - ") that only shows when surrounded by variables
+        // with values or static text. Remove repeating, leading and trailing separators.
+        title.replace(QRegExp("(%S)+"), "%S");
+        title.remove(QRegExp("^%S|%S$"));
+#ifdef __APPLE__
+        // On macOS we separate with a unicode em dash
+        title.replace("%S", " " UTF8_EM_DASH " ");
+#else
+        title.replace("%S", " - ");
+#endif
+    }
 
     return title;
 }
@@ -2181,17 +2275,21 @@ void MainWindow::setWSWindowTitle(QString title)
 
     if (prefs.gui_prepend_window_title && prefs.gui_prepend_window_title[0]) {
         QString custom_title = replaceWindowTitleVariables(prefs.gui_prepend_window_title);
-        title.prepend(QString("[%1] ").arg(custom_title));
+        if (custom_title.length() > 0) {
+            title.prepend(QString("[%1] ").arg(custom_title));
+        }
     }
 
     if (prefs.gui_window_title && prefs.gui_window_title[0]) {
         QString custom_title = replaceWindowTitleVariables(prefs.gui_window_title);
+        if (custom_title.length() > 0) {
 #ifdef __APPLE__
-        // On macOS we separate the titles with a unicode em dash
-        title.append(QString(" %1 %2").arg(UTF8_EM_DASH).arg(custom_title));
+            // On macOS we separate the titles with a unicode em dash
+            title.append(QString(" %1 %2").arg(UTF8_EM_DASH).arg(custom_title));
 #else
-        title.append(QString(" [%1]").arg(custom_title));
+            title.append(QString(" [%1]").arg(custom_title));
 #endif
+        }
     }
 
     setWindowTitle(title);
@@ -2251,7 +2349,7 @@ void MainWindow::setMenusForCaptureFile(bool force_disable)
 
     main_ui_->actionFileExportPacketBytes->setEnabled(enable);
     main_ui_->actionFileExportPDU->setEnabled(enable);
-    main_ui_->actionFileExportSSLSessionKeys->setEnabled(enable);
+    main_ui_->actionFileExportTLSSessionKeys->setEnabled(enable);
 
     foreach (QAction *eo_action, main_ui_->menuFileExportObjects->actions()) {
         eo_action->setEnabled(enable);
@@ -2281,7 +2379,7 @@ void MainWindow::setMenusForCaptureInProgress(bool capture_in_progress) {
 
     main_ui_->actionFileExportPacketBytes->setEnabled(capture_in_progress);
     main_ui_->actionFileExportPDU->setEnabled(!capture_in_progress);
-    main_ui_->actionFileExportSSLSessionKeys->setEnabled(capture_in_progress);
+    main_ui_->actionFileExportTLSSessionKeys->setEnabled(capture_in_progress);
 
     foreach (QAction *eo_action, main_ui_->menuFileExportObjects->actions()) {
         eo_action->setEnabled(capture_in_progress);
@@ -2414,7 +2512,9 @@ void MainWindow::setForCaptureInProgress(bool capture_in_progress, GArray *iface
 {
     setMenusForCaptureInProgress(capture_in_progress);
 
+#if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
     wireless_frame_->setCaptureInProgress(capture_in_progress);
+#endif
 
 #ifdef HAVE_LIBPCAP
     packet_list_->setCaptureInProgress(capture_in_progress);

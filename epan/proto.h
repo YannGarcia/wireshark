@@ -66,17 +66,20 @@ WS_DLL_PUBLIC int hf_text_only;
 
 struct expert_field;
 
+/* Type-check that 'x' is compatible with 'type', should give compiler warnings otherwise. */
+#define cast_same(type, x) (0 ? (type)0 : (x))
+
 /** Make a const value_string[] look like a _value_string pointer, used to set header_field_info.strings */
-#define VALS(x)	(const struct _value_string*)(x)
+#define VALS(x)     (cast_same(const struct _value_string*, (x)))
 
 /** Make a const val64_string[] look like a _val64_string pointer, used to set header_field_info.strings */
-#define VALS64(x)   (const struct _val64_string*)(x)
+#define VALS64(x)   (cast_same(const struct _val64_string*, (x)))
 
 /** Something to satisfy checkAPIs when you have a pointer to a value_string_ext (e.g., one built with value_string_ext_new()) */
-#define VALS_EXT_PTR(x) (x)
+#define VALS_EXT_PTR(x) (cast_same(value_string_ext*, (x)))
 
 /** Make a const true_false_string[] look like a _true_false_string pointer, used to set header_field_info.strings */
-#define TFS(x)	(const struct true_false_string*)(x)
+#define TFS(x)      (cast_same(const struct true_false_string*, (x)))
 
 typedef void (*custom_fmt_func_t)(gchar *, guint32);
 
@@ -93,7 +96,7 @@ typedef void (*custom_fmt_func_64_t)(gchar *, guint64);
 
 /** Make a const range_string[] look like a _range_string pointer, used to set
  * header_field_info.strings */
-#define RVALS(x) (const struct _range_string*)(x)
+#define RVALS(x) (cast_same(const struct _range_string*, (x)))
 
 /** Cast a ft_framenum_type_t, used to set header_field_info.strings */
 #define FRAMENUM_TYPE(x) GINT_TO_POINTER(x)
@@ -599,7 +602,7 @@ typedef enum {
 
 /* Following constants have to be ORed with a field_display_e when dissector
  * want to use specials value-string MACROs for a header_field_info */
-#define BASE_RANGE_STRING       0x0100
+#define BASE_RANGE_STRING       0x0100  /**< Use the supplied range string to convert the field to text */
 #define BASE_EXT_STRING         0x0200
 #define BASE_VAL64_STRING       0x0400
 #define BASE_ALLOW_ZERO         0x0800  /**< Display <none> instead of <MISSING> for zero sized byte array */
@@ -2394,7 +2397,7 @@ WS_DLL_PUBLIC void proto_heuristic_dissector_foreach(const protocol_t *protocol,
  * unchanged. May be NULL.
  * @param is_sctp Set to TRUE if the layer list contains SCTP, otherwise
  * unchanged. May be NULL.
- * @param is_ssl Set to TRUE if the layer list contains SSL/TLS, otherwise
+ * @param is_tls Set to TRUE if the layer list contains SSL/TLS, otherwise
  * unchanged. May be NULL.
  * @param is_rtp Set to TRUE if the layer list contains RTP, otherwise
  * unchanged. May be NULL.
@@ -2403,7 +2406,7 @@ WS_DLL_PUBLIC void proto_heuristic_dissector_foreach(const protocol_t *protocol,
  */
 WS_DLL_PUBLIC void proto_get_frame_protocols(const wmem_list_t *layers,
       gboolean *is_ip, gboolean *is_tcp, gboolean *is_udp, gboolean *is_sctp,
-      gboolean *is_ssl, gboolean *is_rtp, gboolean *is_lte_rlc);
+      gboolean *is_tls, gboolean *is_rtp, gboolean *is_lte_rlc);
 
 /** Check whether a protocol, specified by name, is in a layer list.
  * @param layers Protocol layer list
@@ -2476,10 +2479,8 @@ WS_DLL_PUBLIC void proto_registrar_dump_protocols(void);
 /** Dumps a glossary of the field value strings or true/false strings to STDOUT */
 WS_DLL_PUBLIC void proto_registrar_dump_values(void);
 
-#ifdef HAVE_JSONGLIB
 /** Dumps a mapping file for loading tshark output into ElasticSearch */
 WS_DLL_PUBLIC void proto_registrar_dump_elastic(const gchar* filter);
-#endif
 
 /** Dumps the number of protocol and field registrations to STDOUT.
  @return FALSE if we pre-allocated enough fields, TRUE otherwise. */

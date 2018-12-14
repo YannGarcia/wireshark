@@ -219,6 +219,256 @@ static etsi_ieee1609dot2_common_options_t g_options = { FALSE, NULL, NULL, NULL,
 
 
 
+
+
+static void
+show_hex(const char *prefix, const void *buffer, size_t buflen)
+{
+  const unsigned char*s;
+
+  fprintf (stderr, "%s: ", prefix);
+  for (s= (unsigned char*)buffer; buflen; buflen--, s++)
+    fprintf (stderr, "%02x", *s);
+  putc ('\n', stderr);
+}
+
+static
+unsigned char* hex_to_bin(const char* input, size_t* buffer_length) {
+  char a;
+  size_t i, len;
+  unsigned char *retval = NULL;
+  if (!input) return NULL;
+  if((len = strlen(input)) & 1) return NULL;
+  retval = (unsigned char*)gcry_malloc(len >> 1);
+  for ( i = 0; i < len; i ++) {
+    a = toupper(input[i]);
+    if (!isxdigit(a)) break;
+    if (isdigit(a)) a -= '0';
+    else a = a - 'A' + 0x0A; 
+   
+    if (i & 1) retval[i >> 1] |= a;
+    else retval[i >> 1] = a<<4;
+  }
+  if (i < len) {
+    gcry_free(retval);
+    retval = NULL;
+  }
+  *buffer_length = len >> 1;
+
+  return retval;
+}
+
+static void
+show_sexp(const char *prefix, gcry_sexp_t a)
+{
+  char* buf;
+  size_t size;
+
+  if (prefix)
+    fputs (prefix, stderr);
+  size = gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, NULL, 0);
+  buf = (char*)gcry_xmalloc (size);
+
+  gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, buf, size);
+  fprintf (stderr, "%.*s", (int)size, buf);
+  gcry_free (buf);
+}
+
+static void
+show_mpi(const char *text, const char *text2, gcry_mpi_t a)
+{
+  gcry_error_t err;
+  char *buf;
+  void *bufaddr = &buf;
+
+  err = gcry_mpi_aprint(GCRYMPI_FMT_HEX, (unsigned char**)bufaddr, NULL, a);
+  if (err)
+    fprintf(stderr, "%s%s: [error printing number: %s]\n",
+             text, text2? text2:"", gcry_strerror (err));
+  else
+    {
+      fprintf(stderr, "%s%s: %s\n", text, text2? text2:"", buf);
+      gcry_free (buf);
+    }
+}
+
+static unsigned char*
+sha256(const unsigned char* p_data, const size_t p_data_length) {
+  gcry_error_t result;
+  gcry_md_hd_t hd;
+  unsigned int digestlen;
+  unsigned char* digest;
+  unsigned char* ret_value = NULL;
+  
+  if ((result = gcry_md_open(&hd, GCRY_MD_SHA256, 0)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(result), gcry_strerror(result));
+    return NULL;
+  }
+  digestlen = gcry_md_get_algo_dlen(GCRY_MD_SHA256);
+  gcry_md_write(hd, p_data, p_data_length);
+  digest = gcry_md_read(hd, GCRY_MD_SHA256);
+  // Do not free digest
+  ret_value = (unsigned char*)gcry_malloc(digestlen);
+  memcpy((void*)ret_value, (const void*)digest, digestlen);
+  gcry_md_close(hd);
+
+  return ret_value;
+}
+static int
+compressed_hex_key_to_sexp(const unsigned char* p_comp_key, const size_t p_comp_key_size, const int p_comp_mode, const char* p_curve, const char* p_algo, gcry_sexp_t* p_key) {
+  unsigned char* x_buffer = NULL;
+  unsigned char* y_buffer = NULL;
+  unsigned char* xy_buffer = NULL;
+  size_t buffer_size;
+  gcry_sexp_t keyparm = NULL;
+  gcry_sexp_t key = NULL;
+  gcry_sexp_t private_key = NULL;
+  gcry_sexp_t e_key = NULL;
+  
+  gcry_ctx_t ctx = NULL;
+  gcry_mpi_t a, b, p, p_plus_1, x, q, r;
+  gcry_mpi_t two, three, four, x_3, axb, y_2, y_prime, y_s, y;
+    
+  gcry_error_t rc;
+
+  printf(">>> compressed_hex_key_to_sexp: %zu - %d - %s - %s\n", p_comp_key_size, p_comp_mode, p_curve, p_algo);
+  
+  /* Extract (p, a, b) parameters from elliptic curve */
+  if ((rc = gcry_sexp_build (&keyparm, NULL, "(genkey(ecc(curve %s)(flags param)))", p_curve)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -1;
+  }
+  if ((rc = gcry_pk_genkey(&key, keyparm)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -2;
+  }
+  private_key = gcry_sexp_find_token(key, "private-key", 0);
+  if ((rc = gcry_mpi_ec_new (&ctx, private_key, NULL)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -3;
+  }
+  if ((a = gcry_mpi_ec_get_mpi ("a", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -4;
+  }
+  if ((b = gcry_mpi_ec_get_mpi ("b", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -5;
+  }
+  if ((p = gcry_mpi_ec_get_mpi ("p", ctx, 0)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -6;
+  }
+  gcry_ctx_release (ctx);
+  gcry_sexp_release(key);
+  gcry_sexp_release(private_key);
+  gcry_sexp_release(keyparm);
+  
+  /* Initialise x public key to compute y_2 */
+  buffer_size = p_comp_key_size;
+  x_buffer = (unsigned char*)gcry_malloc(buffer_size);
+  if (x_buffer == NULL) {
+    printf("Failed to allocate memory\n");
+    return -7;
+  }
+  memcpy((void*)x_buffer, (const void*)p_comp_key, buffer_size);
+  if ((rc = gcry_sexp_build(&e_key, NULL, "(e-key(x %b))", buffer_size, x_buffer)) != 0) {
+    printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+    return -8;
+  }
+  if ((x = gcry_sexp_nth_mpi(gcry_sexp_find_token(e_key, "x", 0), 1, GCRYMPI_FMT_USG)) == NULL) {
+    printf("Failed gcry_mpi_ec_get_mpi\n");
+    return -9;
+  }
+  gcry_sexp_release(e_key);
+  
+  /* NIST P-256 Ecc curve equation: y^2=x^3+a*x+b */
+  /* Compute y^2 */
+  two = gcry_mpi_set_ui(NULL, 2);
+  three = gcry_mpi_set_ui(NULL, 3);
+  four = gcry_mpi_set_ui(NULL, 4);
+  x_3 = gcry_mpi_new(0);
+  axb = gcry_mpi_new(0);
+  y_2 = gcry_mpi_new(0);
+  gcry_mpi_powm(x_3, x, three, p); // w = b^e \bmod m. 
+  gcry_mpi_mulm(axb, a, x, p);
+  gcry_mpi_addm(axb, axb, b, p);
+  gcry_mpi_addm(y_2, x_3, axb, p);
+  gcry_mpi_release(two);
+  gcry_mpi_release(three);
+  gcry_mpi_release(a);
+  gcry_mpi_release(b);
+  gcry_mpi_release(x_3);
+  gcry_mpi_release(axb);
+  gcry_mpi_release(x);
+
+  /**
+   * Compute sqrt(y^2): two solutions
+   * NIST P-256 curve: p congruant to 1 (mod 4) = 3 - https://www.ietf.org/archive/id/draft-jivsov-ecc-compact-05.txt Clause 4.3.  The efficient square root algorithm for p=4*k+3
+   * Solution: y' sqrt(y_2) = y' = y2^((p+1)/4)
+   */
+  q = gcry_mpi_new(0);
+  r = gcry_mpi_new(0);
+  p_plus_1 = gcry_mpi_new(0);
+  y_prime = gcry_mpi_new(0);
+  gcry_mpi_add_ui(p_plus_1, p, 1);
+  gcry_mpi_div(q, r, p_plus_1, four, 0);
+  gcry_mpi_release(p_plus_1);
+  gcry_mpi_powm(y_prime, y_2, q, p);
+  gcry_mpi_release(four);
+  gcry_mpi_release(q);
+  gcry_mpi_release(r);
+  gcry_mpi_release(y_2);
+
+  /* The solution to y_2 is y = min(y',p-y') */
+  y = gcry_mpi_new (0);
+  /* Test LSB bit of y' */
+  if (gcry_mpi_test_bit(y_prime, 0) && (p_comp_mode == 1)) {
+    gcry_mpi_add_ui(y, y_prime, 0);  // y = y'
+  } else {
+    y_s = gcry_mpi_new (0);
+    gcry_mpi_subm(y_s, p, y_prime, p); /* y_s = p - y_prime (mod p) */
+    gcry_mpi_add_ui(y, y_s, 0);  // y = p-y'
+    gcry_mpi_release(y_s);
+  }
+  gcry_mpi_release(y_prime);
+  
+  //show_hex(x_buffer, buffer_size, "x_buffer="),
+  y_buffer = (unsigned char*)gcry_malloc(buffer_size);
+  gcry_mpi_print (GCRYMPI_FMT_USG, y_buffer, buffer_size, NULL, y);
+  gcry_mpi_release (y);
+  //show_hex(y_buffer, buffer_size, "y_buffer="),
+  xy_buffer = (unsigned char*)gcry_malloc(1 + 2 * buffer_size);
+  *xy_buffer = 0x04;
+  memcpy((void*)(xy_buffer + 1), (const void*)x_buffer, buffer_size);
+  memcpy((void*)(char*)(xy_buffer + buffer_size + 1), (const void*)y_buffer, buffer_size);
+  //show_hex(xy_buffer, 2 * buffer_size, "xy_buffer=");
+
+  if (strcmp(p_algo, "ecc") == 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecc(curve %s)(q %b)))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -10;
+    }
+  } else if (strcmp(p_algo, "ecdsa") == 0) {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(public-key(ecdsa(curve %s)(q %b)))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -11;
+    }
+  } else {
+    if ((rc = gcry_sexp_build (p_key, NULL, "(key-data(public-key(ecdh(curve %s)(q %b))))", p_curve, 2 * buffer_size + 1, xy_buffer)) != 0) {
+      printf("Failed for %s/%s\n", gcry_strsource(rc), gcry_strerror(rc));
+      return -12;
+    }
+  }
+  
+  /* Release resources */
+  gcry_free(x_buffer);
+  gcry_free(y_buffer);
+  gcry_free(xy_buffer);
+  
+  return 0;
+} // End of function compressed_hex_key_to_sexp
+
 static void etsi_ieee1609dot2_cleanup(void)
 {
   printf(">>> ieee1609dot2_cleanup\n");
@@ -328,13 +578,13 @@ dissect_ieee1609dot2_eccP256CurvePoint_packet(tvbuff_t *tvb, packet_info *pinfo 
       offset += 32;
     } else if ((tag & 0x7f) == 0x02) { // Decode compressed-y-0
       g_decrypt_record.encryption_compressed_key_mode = 0x02;
-      g_decrypt_record.encryption_compressed_key = wmem_alloc(wmem_packet_scope(), 32);
+      g_decrypt_record.encryption_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
       tvb_memcpy(tvb, (char*)g_decrypt_record.encryption_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_0, tvb, offset, 32, FALSE);
       offset += 32;
     } else if ((tag & 0x7f) == 0x03) { // Decode compressed-y-1
       g_decrypt_record.encryption_compressed_key_mode = 0x03;
-      g_decrypt_record.encryption_compressed_key = wmem_alloc(wmem_packet_scope(), 32);
+      g_decrypt_record.encryption_compressed_key = (gchar*)wmem_alloc(wmem_packet_scope(), 32);
       tvb_memcpy(tvb, (char*)g_decrypt_record.encryption_compressed_key, offset, 32);
       proto_tree_add_item(sh_tree, hf_1609dot2_compressed_y_1, tvb, offset, 32, FALSE);
       offset += 32;
@@ -624,10 +874,11 @@ dissect_ieee1609dot2_ssp_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     /* TODO Check if both case can be unified */
     /* Octetstring */
     if ((tag & 0x7f) == 0x00) {
-      guint8 full_len;
+      /* guint8 full_len; */
       guint8 len;
 
-      full_len = tvb_get_guint8(tvb, offset);
+      /* full_len = tvb_get_guint8(tvb, offset);
+        printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len); */
       offset += 1;
       len = tvb_get_guint8(tvb, offset);
       offset += 1;
@@ -638,11 +889,11 @@ dissect_ieee1609dot2_ssp_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
     }
     /* SspBitmap */
     if ((tag & 0x7f) == 0x01) {
-      guint8 full_len;
+      /* guint8 full_len; */
       guint8 len;
 
-      full_len = tvb_get_guint8(tvb, offset);
-      printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len);
+      /* full_len = tvb_get_guint8(tvb, offset);
+         printf("dissect_ieee1609dot2_ssp_packet: full_len=%d\n", full_len); */
       offset += 1;
       len = tvb_get_guint8(tvb, offset);
       printf("dissect_ieee1609dot2_ssp_packet: len=%d\n", len);
@@ -1297,26 +1548,26 @@ dissect_ieee1609dot2_signature_packet(tvbuff_t *tvb, packet_info *pinfo, proto_t
 static int
 dissect_ieee1609dot2_unsecured_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
 {
-  proto_tree *sh_tree = NULL;
-  proto_item *sh_ti = NULL;
+  /* proto_tree *sh_tree = NULL; */
+  /* proto_item *sh_ti = NULL; */
 
   printf(">>> dissect_ieee1609dot2_unsecured_data_packet: offset=0x%02x\n", offset);
   //printf("dissect_ieee1609dot2_unsecured_data_packet: %02x - %02x - %02x - %02x - %02x\n", tvb_get_guint8(tvb, offset), tvb_get_guint8(tvb, offset + 1), tvb_get_guint8(tvb, offset + 2), tvb_get_guint8(tvb, offset + 3), tvb_get_guint8(tvb, offset + 4));
   if (tree) { /* we are being asked for details */
     //guint8 tag;
     gint len;
-    tvbuff_t *next_tvb;
+    /* tvbuff_t *next_tvb; */
     
     len = tvb_get_guint8(tvb, offset);
     offset += 1;
     printf("dissect_ieee1609dot2_unsecured_data_packet: len = %d - offset = %d\n", len, offset);
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
+    /* TODO Dissect GN Packet
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_unsecured_data_packet, tvb, offset, len, FALSE);
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_unsecured_content);
 
-    /* Dissect GN Packet */
     next_tvb = tvb_new_subset_length(tvb, offset, len);
-    // TODO Call GN codec dissect_unsecured_packet(next_tvb, pinfo, sh_tree, 0);
+    Call GN codec dissect_unsecured_packet(next_tvb, pinfo, sh_tree, 0); */
     offset += len;
   }
   
@@ -1462,7 +1713,7 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
 
   printf(">>> dissect_ieee1609dot2_signed_data_packet: offset=0x%02x\n", offset);
   if (tree) { /* we are being asked for details */
-    guint8 tag;
+    /* guint8 tag; */
     gint sh_length;
     
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
@@ -1471,7 +1722,7 @@ dissect_ieee1609dot2_signed_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_signed_data_packet);
 
     /* HashAlgoritm */
-    tag = tvb_get_guint8(tvb, offset);
+    /* tag = tvb_get_guint8(tvb, offset); */
     proto_tree_add_item(sh_tree, hf_1609dot2_hash_algorithm, tvb, offset, 1, FALSE);
     offset += 1;
     
@@ -1514,12 +1765,12 @@ dissect_ieee1609dot2_enc_data_key_data_packet(tvbuff_t *tvb, packet_info *pinfo,
       offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecies_brainpoolp_256, ett_1609dot2_base_public_enc_key);
     }
     // OCTET STRING (SIZE (16))
-    g_decrypt_record.encrypted_aes_symmetric_key = wmem_alloc(wmem_packet_scope(), 16);
+    g_decrypt_record.encrypted_aes_symmetric_key = (gchar*)wmem_alloc(wmem_packet_scope(), 16);
     tvb_memcpy(tvb, (char*)g_decrypt_record.encrypted_aes_symmetric_key, offset, 16);
     proto_tree_add_item(sh_tree, hf_1609dot2_c, tvb, offset, 16, FALSE); /* Encrypted AES symmetric key */
     offset += 16;
     // OCTET STRING (SIZE (16))
-    g_decrypt_record.tag = wmem_alloc(wmem_packet_scope(), 16);
+    g_decrypt_record.tag = (gchar*)wmem_alloc(wmem_packet_scope(), 16);
     tvb_memcpy(tvb, (char*)g_decrypt_record.tag, offset, 16);
     proto_tree_add_item(sh_tree, hf_1609dot2_t, tvb, offset, 16, FALSE); /* Tag */
     offset += 16;    
@@ -1641,7 +1892,7 @@ dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_i
     sh_length = offset;
     
     // OCTET STRING (SIZE (12))
-    g_decrypt_record.nonce = wmem_alloc(wmem_packet_scope(), 12);
+    g_decrypt_record.nonce = (gchar*)wmem_alloc(wmem_packet_scope(), 12);
     tvb_memcpy(tvb, (char*)g_decrypt_record.nonce, offset, 12);
     proto_tree_add_item(sh_tree, hf_1609dot2_nonce, tvb, offset, 12, FALSE);
     offset += 12;
@@ -2085,15 +2336,10 @@ proto_register_etsi_ieee1609dot2(void)
   };
 
   /* Register the protocol name and description */
-  /*proto_etsi_ieee1609dot2 = proto_register_protocol (
-						     "ItsEtsiIEEE1609dot2",
-						     "ItsEtsiIEEE1609dot2",
-						     "ItsEtsiIEEE1609dot2"
-						     );*/
   proto_etsi_ieee1609dot2 = proto_register_protocol (
-						     "Its Etsi IEEE 1609dot2", /* name       */
-						     "Its Etsi IEEE 1609dot2", /* short name */
-						     "its_etsi_ieee_1609dot2"  /* abbrev     */
+						     "ETSI ITS IEEE 1609dot2", /* name       */
+						     "ETSI ITS Etsi IEEE 1609dot2", /* short name */
+						     "etsi_its_ieee_1609dot2"  /* abbrev     */
 						     );
 
   /* Required function calls to register the header fields and subtrees used */
@@ -2175,92 +2421,145 @@ proto_reg_handoff_etsi_ieee1609dot2(void)
     dissector_add_uint("gn.bnh", 2, etsi_ieee1609dot2_handle);*/
 }
 
-static
-unsigned char* hex_to_string(const char* input)
-{
-  char a;
-  size_t i, len;
-  unsigned char *retval = NULL;
-  if (!input) return NULL;
-  if((len = strlen(input)) & 1) return NULL;
-  retval = (gchar*)malloc(len >> 1);
-  for ( i = 0; i < len; i ++) {
-    a = toupper(input[i]);
-    if (!isxdigit(a)) break;
-    if (isdigit(a)) a -= '0';
-    else a = a - 'A' + 0x0A;
-    
-    if (i & 1) retval[i >> 1] |= a;
-    else retval[i >> 1] = a<<4;
-  }
-  if (i < len) {
-    free(retval);
-    retval = NULL;
-  }
-  
-  return retval;
-}
-
 static int
-decrypt_and_decode_pki_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree _U_, int offset, int len)
+decrypt_and_decode_pki_message(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, int offset _U_, int len _U_) // TODO Remove _U_
 {
-  unsigned char* ts_private_key;
-  unsigned char* ts_public_enc_key;
-  unsigned char* ts_public_sign_key;
-  unsigned char* iut_private_key;
-  unsigned char* iut_public_enc_key;
-  unsigned char* iut_public_sign_key;
-  gcry_cipher_hd_t cipher;
-  gcry_error_t	err;
-  gcry_sexp_t param = NULL;
+  size_t size = 0;                                   /* Working buiffer size */
+  //char *buffer = NULL;                               /* Working buffer */
+  unsigned char* ts_private_key = NULL;              /* Binary Test System privqte key */
+  /* unsigned char* ts_public_enc_key; */
+  /* unsigned char* ts_public_sign_key; */
+  /* unsigned char* iut_private_key; */
+  /* unsigned char* iut_public_enc_key; */
+  /* unsigned char* iut_public_sign_key; */
+  char* nist_curve = "NIST P-256";
+  char* brainpool_curve = "brainpoolP256r1";
+  gcry_error_t	err;                                 /* gcry_ function return code */
+  gcry_ctx_t ctx;
+  gcry_mpi_t q;                                      /* Calculate public key based on private k */
+  gcry_sexp_t gcry_ts_private_key = NULL;            /* Private key s-exp */
+  gcry_sexp_t gcry_ts_public_key = NULL;             /* Public key s-exp */
+  gcry_cipher_hd_t cipher = NULL;
   //gcry_sexp_t key = NULL;
-  char* buffer = NULL;
-  char* clear_data = NULL;
+  //char* w_buffer = NULL;                             /* Wireshark decoding buffer containing cyphered data */
+  /* char* clear_data = NULL; */
   //tvbuff_t* clear_tvb = NULL;
 
   printf(">>> decrypt_and_decode_pki_message\n");
   
-  buffer = (char*)tvb_memdup(wmem_packet_scope(), tvb, offset, len);
+  /* w_buffer = (char*)tvb_memdup(wmem_packet_scope(), tvb, offset, len); */
   printf("decrypt_and_decode_pki_message: algo: %02x\n", g_decrypt_record.encryption_algo);
   printf("decrypt_and_decode_pki_message: comp.mode: %02x\n", g_decrypt_record.encryption_compressed_key_mode);
-  printf("decrypt_and_decode_pki_message: buffer: %02x - %02x - %02x - %02x - %02x\n", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+  
+  /* guint8 encryption_algo; */
+  /* guint8 encryption_compressed_key_mode; */
+  /* gchar* encryption_compressed_key; */
+  /* gchar* nonce; */
+  /* gchar* tag; */
+  /* gchar* encrypted_aes_symmetric_key; */
   
   // 1. Convert hexadecimal key into binary
-  ts_private_key = hex_to_string(g_options.ts_private_enc_key);
-  printf("decrypt_and_decode_pki_message: ts_private_key: %02x - %02x - %02x - %02x - %02x\n", ts_private_key[0], ts_private_key[1], ts_private_key[2], ts_private_key[3], ts_private_key[4]);
-  ts_public_enc_key = hex_to_string(g_options.ts_public_enc_key);
-  ts_public_sign_key = hex_to_string(g_options.ts_public_sign_key);
-  iut_private_key = hex_to_string(g_options.iut_private_enc_key);
-  printf("decrypt_and_decode_pki_message: iut_private_key: %02x - %02x - %02x - %02x - %02x\n", iut_private_key[0], iut_private_key[1], iut_private_key[2], iut_private_key[3], iut_private_key[4]);
-  iut_public_enc_key = hex_to_string(g_options.iut_public_enc_key);
-  iut_public_sign_key = hex_to_string(g_options.iut_public_sign_key);
+  /* ts_public_enc_key = hex_to_bin(g_options.ts_public_enc_key); */
+  /* ts_public_sign_key = hex_to_bin(g_options.ts_public_sign_key); */
+  /* iut_private_key = hex_to_bin(g_options.iut_private_enc_key); */
+  /* iut_public_enc_key = hex_to_bin(g_options.iut_public_enc_key); */
+  /* iut_public_sign_key = hex_to_bin(g_options.iut_public_sign_key); */
   
   // 2. Convert encryption keys into S-expression
-  
-  err = gcry_sexp_build(&param,
-			NULL,
-			"(genkey(ecdh(curve %s)))",
-			(g_decrypt_record.encryption_algo == 0) ? "NIST P-256" : "BRAINPOOL P-256");
-  if (gcry_err_code(err)) {
-    free(ts_private_key);
-    fprintf(stderr, "decrypt_and_decode_pki_message: Failed to retrieve the curve\n");
-    return -1;
+  // 2.1 Convert private key into sexp
+  ts_private_key = hex_to_bin(g_options.ts_private_enc_key, &size);
+  printf("decrypt_and_decode_pki_message: size: %zu\n", size);
+  show_hex("ts_private_key:", ts_private_key, size);
+  if (g_decrypt_record.encryption_algo == 0) {
+    err = gcry_sexp_build(&gcry_ts_private_key, NULL, "(private-key(ecc(curve %s)(d %b)))", nist_curve, size, ts_private_key);
+  } else {
+    err = gcry_sexp_build(&gcry_ts_private_key, NULL, "(private-key(ecc(curve %s)(d %b)))", brainpool_curve, size, ts_private_key);
   }
-  
+  if (gcry_err_code(err)) {
+    fprintf(stderr, "decrypt_and_decode_pki_message: Failed %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+    goto decrypt_and_decode_pki_message_label;
+  }
+  // TODO Test the private key is on the curve 
+  // 2.2 Convert public keys into sexp
+  if ((err = gcry_mpi_ec_new(&ctx, gcry_ts_private_key, NULL)) != 0) {
+    fprintf(stderr, "decrypt_and_decode_pki_message: Failed %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+    goto decrypt_and_decode_pki_message_label;
+  }
+  if ((q = gcry_mpi_ec_get_mpi("q", ctx, 0)) == NULL) {
+    fprintf(stderr, "decrypt_and_decode_pki_message: Failed gcry_mpi_ec_get_mpi\n");
+    goto decrypt_and_decode_pki_message_label;
+  }
+  if (g_decrypt_record.encryption_algo == 0) {
+    err = gcry_sexp_build(&gcry_ts_public_key, NULL, "(public-key(ecc(curve %s)(q %m)))", nist_curve, q);
+  } else {
+    err = gcry_sexp_build(&gcry_ts_public_key, NULL, "(public-key(ecc(curve %s)(q %m)))", brainpool_curve, q);
+  }
+  if (gcry_err_code(err)) {
+    fprintf(stderr, "decrypt_and_decode_pki_message: Failed %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+    goto decrypt_and_decode_pki_message_label;
+  }
+  gcry_mpi_release(q);
+  gcry_ctx_release(ctx);
+  // TODO Test the public key is on the curve 
+  show_sexp("ts_private_key: ", gcry_ts_private_key);
+  show_sexp("ts_public_key: ", gcry_ts_public_key);
   // 1. Derive ephemeral key
+  show_hex("encryption_compressed_key:", g_decrypt_record.encryption_compressed_key, 32);
+  show_hex("nonce:", g_decrypt_record.nonce, 12);
+  show_hex("tag:", g_decrypt_record.tag, 16);
+  show_hex("encrypted_aes_symmetric_key:", g_decrypt_record.encrypted_aes_symmetric_key, 16);
 
+  {
+    /*const guint8 secret_key_length = 32; // TODO Get length from grcy_ API
+    const guint8 nonce_length = 12;
+    const guint8 sym_key_length = 16;
+    const guint8 tag_length = 16;
+    const guint8 k_length = 32;*/
+
+    /* Convert encryption_compressed_key into sexp */
+    char* curve = "NIST P-256";
+    char* algo = "ecdh";
+    gcry_sexp_t gcry_ephemeral_key;
+    compressed_hex_key_to_sexp(g_decrypt_record.encryption_compressed_key, 32, g_decrypt_record.encryption_compressed_key_mode, curve, algo, &gcry_ephemeral_key);
+    show_sexp("gcry_ephemeral_key=", gcry_ephemeral_key);
+    /* Derive ephemeral key */
+    
+    
+    
+    
+    /* Release resources */
+    gcry_sexp_release(gcry_ephemeral_key);
+  }
+
+
+
+
+
+
+
+
+  
   // 2. Decrypt the message
   err = gcry_cipher_open(&cipher, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CCM, 0);
   if (gcry_err_code(err)) {
-    free(ts_private_key);
     fprintf(stderr, "decrypt_and_decode_pki_message: Failed to retrieve cyphering handle\n");
-    return -1;
+    goto decrypt_and_decode_pki_message_label;
   }
-  clear_data = (char *)wmem_alloc(wmem_packet_scope(), len); /* Encrypted and clear messages have the same length */  
+  /* clear_data = (char*)wmem_alloc(wmem_packet_scope(), len); /\* Encrypted and clear messages have the same length *\/   */
   // TODO Decrypt
   gcry_cipher_close(cipher);
-  gcry_sexp_release(param);
+
+  // Release resources
+  /* free(clear_data); */
+  gcry_sexp_release(gcry_ts_public_key);
+  gcry_sexp_release(gcry_ts_private_key);
   free(ts_private_key);
+  /* free(ts_public_enc_key); */
+  /* free(ts_public_sign_key); */
+  /* free(iut_private_key); */
+  /* free(iut_public_enc_key); */
+  /* free(iut_public_sign_key); */
+  
   /* clear_data contains the decrypted data */
   
   //clear_tvb = tvb_new_child_real_data(tvb, (const guint8 *)clear_data, 0, len);
@@ -2269,4 +2568,13 @@ decrypt_and_decode_pki_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
   //dissect_ieee1609dot2_data_packet(clear_tvb, pinfo, tree, 0);
   
   return 0;
+ decrypt_and_decode_pki_message_label:
+  free(ts_private_key);
+  /* free(ts_public_enc_key); */
+  /* free(ts_public_sign_key); */
+  /* free(iut_private_key); */
+  /* free(iut_public_enc_key); */
+  /* free(iut_public_sign_key); */
+  
+  return -1;
 } // End of function decrypt_and_decode_pki_message

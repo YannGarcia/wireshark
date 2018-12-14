@@ -45,6 +45,8 @@ void proto_reg_handoff_ngap(void);
 
 static dissector_handle_t ngap_handle;
 static dissector_handle_t nas_5gs_handle;
+static dissector_handle_t nr_rrc_ue_radio_paging_info_handle;
+static dissector_handle_t nr_rrc_ue_radio_access_cap_info_handle;
 
 #include "packet-ngap-val.h"
 
@@ -100,6 +102,9 @@ static gint ett_ngap_NrencryptionAlgorithms = -1;
 static gint ett_ngap_NrintegrityProtectionAlgorithms = -1;
 static gint ett_ngap_EUTRAencryptionAlgorithms = -1;
 static gint ett_ngap_EUTRAintegrityProtectionAlgorithms = -1;
+static gint ett_ngap_UERadioCapabilityForPaging = -1;
+static gint ett_ngap_UERadioCapability = -1;
+static gint ett_ngap_LastVisitedEUTRANCellInformation = -1;
 #include "packet-ngap-ett.c"
 
 static expert_field ei_ngap_number_pages_le15 = EI_INIT;
@@ -119,8 +124,10 @@ typedef struct _ngap_ctx_t {
 
 struct ngap_conv_info {
   address addr_a;
+  guint32 port_a;
   GlobalRANNodeID_enum ranmode_id_a;
   address addr_b;
+  guint32 port_b;
   GlobalRANNodeID_enum ranmode_id_b;
 };
 
@@ -228,9 +235,51 @@ dissect_ngap_warningMessageContents(tvbuff_t *warning_msg_tvb, proto_tree *tree,
 static void
 ngap_PacketLossRate_fmt(gchar *s, guint32 v)
 {
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%.1f %% (%u)", (float)v/10, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%.1f%% (%u)", (float)v/10, v);
 }
 
+static void
+ngap_PacketDelayBudget_fmt(gchar *s, guint32 v)
+{
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%.1fms (%u)", (float)v/2, v);
+}
+
+static void
+ngap_TimeUEStayedInCellEnhancedGranularity_fmt(gchar *s, guint32 v)
+{
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%.1fs", ((float)v)/10);
+}
+
+static void
+ngap_PeriodicRegistrationUpdateTimer_fmt(gchar *s, guint32 v)
+{
+  guint32 val = v & 0x1f;
+
+  switch (v>>5) {
+    case 0:
+      g_snprintf(s, ITEM_LABEL_LENGTH, "%u min (%u)", val * 10, v);
+      break;
+    case 1:
+    default:
+      g_snprintf(s, ITEM_LABEL_LENGTH, "%u hr (%u)", val, v);
+      break;
+    case 2:
+      g_snprintf(s, ITEM_LABEL_LENGTH, "%u hr (%u)", val * 10, v);
+      break;
+    case 3:
+      g_snprintf(s, ITEM_LABEL_LENGTH, "%u sec (%u)", val * 2, v);
+      break;
+    case 4:
+      g_snprintf(s, ITEM_LABEL_LENGTH, "%u sec (%u)", val * 30, v);
+      break;
+    case 5:
+      g_snprintf(s, ITEM_LABEL_LENGTH, "%u min (%u)", val, v);
+      break;
+    case 7:
+      g_snprintf(s, ITEM_LABEL_LENGTH, "deactivated (%u)", v);
+      break;
+  }
+}
 
 static struct ngap_private_data*
 ngap_get_private_data(packet_info *pinfo)
@@ -244,6 +293,21 @@ ngap_get_private_data(packet_info *pinfo)
   return ngap_data;
 }
 
+static GlobalRANNodeID_enum
+ngap_get_ranmode_id(address *addr, guint32 port, packet_info *pinfo)
+{
+  struct ngap_private_data *ngap_data = ngap_get_private_data(pinfo);
+  GlobalRANNodeID_enum ranmode_id = (GlobalRANNodeID_enum)-1;
+
+  if (ngap_data->ngap_conv) {
+    if (addresses_equal(addr, &ngap_data->ngap_conv->addr_a) && port == ngap_data->ngap_conv->port_a) {
+      ranmode_id = ngap_data->ngap_conv->ranmode_id_a;
+    } else if (addresses_equal(addr, &ngap_data->ngap_conv->addr_b) && port == ngap_data->ngap_conv->port_b) {
+      ranmode_id = ngap_data->ngap_conv->ranmode_id_b;
+    }
+  }
+  return ranmode_id;
+}
 
 #include "packet-ngap-fn.c"
 
@@ -337,8 +401,10 @@ dissect_ngap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
   if (!ngap_data->ngap_conv) {
     ngap_data->ngap_conv = wmem_new0(wmem_file_scope(), struct ngap_conv_info);
     copy_address_wmem(wmem_file_scope(), &ngap_data->ngap_conv->addr_a, &pinfo->src);
+    ngap_data->ngap_conv->port_a = pinfo->srcport;
     ngap_data->ngap_conv->ranmode_id_a = (GlobalRANNodeID_enum)-1;
     copy_address_wmem(wmem_file_scope(), &ngap_data->ngap_conv->addr_b, &pinfo->dst);
+    ngap_data->ngap_conv->port_b = pinfo->destport;
     ngap_data->ngap_conv->ranmode_id_b = (GlobalRANNodeID_enum)-1;
     conversation_add_proto_data(conversation, proto_ngap, ngap_data->ngap_conv);
   }
@@ -355,6 +421,8 @@ proto_reg_handoff_ngap(void)
 
   if (!Initialized) {
     nas_5gs_handle = find_dissector_add_dependency("nas-5gs", proto_ngap);
+    nr_rrc_ue_radio_paging_info_handle = find_dissector_add_dependency("nr-rrc.ue_radio_paging_info", proto_ngap);
+    nr_rrc_ue_radio_access_cap_info_handle = find_dissector_add_dependency("nr-rrc.ue_radio_access_cap_info", proto_ngap);
     dissector_add_for_decode_as("sctp.port", ngap_handle);
     dissector_add_uint("sctp.ppi", NGAP_PROTOCOL_ID,   ngap_handle);
     Initialized=TRUE;
@@ -515,12 +583,16 @@ void proto_register_ngap(void) {
     &ett_ngap_NGRANTraceID,
     &ett_ngap_InterfacesToTrace,
     &ett_ngap_SourceToTarget_TransparentContainer,
+    &ett_ngap_TargetToSource_TransparentContainer,
     &ett_ngap_RRCContainer,
     &ett_ngap_RATRestrictionInformation,
     &ett_ngap_NrencryptionAlgorithms,
     &ett_ngap_NrintegrityProtectionAlgorithms,
     &ett_ngap_EUTRAencryptionAlgorithms,
     &ett_ngap_EUTRAintegrityProtectionAlgorithms,
+    &ett_ngap_UERadioCapabilityForPaging,
+    &ett_ngap_UERadioCapability,
+    &ett_ngap_LastVisitedEUTRANCellInformation,
 #include "packet-ngap-ettarr.c"
   };
 

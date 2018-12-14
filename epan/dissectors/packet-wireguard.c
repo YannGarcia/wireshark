@@ -26,7 +26,6 @@
 #include <epan/proto_data.h>
 #include <epan/uat.h>
 #include <wsutil/file_util.h>
-#include <wsutil/ws_printf.h> /* ws_g_warning */
 #include <wsutil/wsgcrypt.h>
 #include <wsutil/curve25519.h>
 
@@ -148,7 +147,7 @@ typedef struct wg_ekey {
  * Maps the public key to the "wg_skey_t" structure.
  * Keys are populated from the UAT and key log file.
  */
-static GHashTable *wg_static_keys;
+static GHashTable *wg_static_keys = NULL;
 
 /*
  * Set of ephemeral keys (for decryption). Maps the public key to the
@@ -618,7 +617,7 @@ wg_psk_iter_next(wg_psk_iter_context *psk_iter, const wg_handshake_state_t *hs,
 /* PSK handling. }}} */
 
 /* UAT and key configuration. {{{ */
-/* XXX this is copied verbatim from packet-ssl-utils.c - create new common API
+/* XXX this is copied verbatim from packet-tls-utils.c - create new common API
  * for retrieval of runtime secrets? */
 static gboolean
 file_needs_reopen(FILE *fp, const char *filename)
@@ -756,6 +755,18 @@ wg_keylog_read(void)
     }
 }
 
+static void*
+wg_key_uat_record_copy_cb(void *dest, const void *source, size_t len _U_)
+{
+    const wg_key_uat_record_t* o = (const wg_key_uat_record_t*)source;
+    wg_key_uat_record_t* d = (wg_key_uat_record_t*)dest;
+
+    d->key_type = o->key_type;
+    d->key = g_strdup(o->key);
+
+    return dest;
+}
+
 static gboolean
 wg_key_uat_record_update_cb(void *r, char **error)
 {
@@ -769,6 +780,13 @@ wg_key_uat_record_update_cb(void *r, char **error)
     }
 
     return TRUE;
+}
+
+static void
+wg_key_uat_record_free_cb(void *r)
+{
+    wg_key_uat_record_t *rec = (wg_key_uat_record_t *)r;
+    g_free(rec->key);
 }
 
 static void
@@ -802,8 +820,10 @@ static void
 wg_key_uat_reset(void)
 {
     /* Erase keys when the UAT is unloaded. */
-    g_hash_table_destroy(wg_static_keys);
-    wg_static_keys = NULL;
+    if (wg_static_keys != NULL) {
+        g_hash_table_destroy(wg_static_keys);
+        wg_static_keys = NULL;
+    }
 }
 
 UAT_VS_DEF(wg_key_uat, key_type, wg_key_uat_record_t, guint, WG_KEY_UAT_PUBLIC, "Public")
@@ -910,7 +930,7 @@ wg_process_response(tvbuff_t *tvb, wg_handshake_state_t *hs)
     // XXX when multiple responses are linkable to a single handshake state,
     // they should probably fork into a new state or be discarded when equal.
     if (hs->initiator_recv_cipher || hs->responder_recv_cipher) {
-        ws_g_warning("%s FIXME multiple responses linked to a single session", G_STRFUNC);
+        g_warning("%s FIXME multiple responses linked to a single session", G_STRFUNC);
         return;
     }
     DISSECTOR_ASSERT(!hs->initiator_recv_cipher);
@@ -1809,9 +1829,9 @@ proto_register_wg(void)
             &num_wg_key_records,            /* numitems_ptr */
             UAT_AFFECTS_DISSECTION,         /* affects dissection of packets, but not set of named fields */
             NULL,                           /* Help section (currently a wiki page) */
-            NULL,                           /* copy_cb */
+            wg_key_uat_record_copy_cb,      /* copy_cb */
             wg_key_uat_record_update_cb,    /* update_cb */
-            NULL,                           /* free_cb */
+            wg_key_uat_record_free_cb,      /* free_cb */
             wg_key_uat_apply,               /* post_update_cb */
             wg_key_uat_reset,               /* reset_cb */
             wg_key_uat_fields);
@@ -1834,7 +1854,7 @@ proto_register_wg(void)
             &pref_keylog_file, FALSE);
 
     if (!wg_decrypt_init()) {
-        ws_g_warning("%s: decryption will not be possible due to lack of algorithms support", G_STRFUNC);
+        g_warning("%s: decryption will not be possible due to lack of algorithms support", G_STRFUNC);
     }
 
     wg_ephemeral_keys = wmem_map_new_autoreset(wmem_epan_scope(), wmem_file_scope(), g_int_hash, wg_pubkey_equal);
