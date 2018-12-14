@@ -18,7 +18,8 @@
 #include <glib.h>
 #include <gmodule.h>
 
-#include <wsutil/wspcap.h>
+#include <Packet32.h>
+//#include <wsutil/wspcap.h>
 
 /* XXX - yes, I know, I should move cppmagic.h to a generic location. */
 #include "tools/lemon/cppmagic.h"
@@ -28,10 +29,10 @@
 #include <windowsx.h>
 #include <Ntddndis.h>
 
+
 #include "caputils/capture_wpcap_packet.h"
 #include <wsutil/file_util.h>
 
-#include <Packet32.h>
 
 gboolean has_wpacket = FALSE;
 
