@@ -38,7 +38,7 @@ set( SRC_FILES
 set_source_files_properties(
         ${CLEAN_FILES}
         PROPERTIES
-        COMPILE_FLAGS "${WERROR_COMMON_FLAGS}" -Wno-unused-function -Wno-unused-const-variable
+        COMPILE_FLAGS "${WERROR_COMMON_FLAGS} -Wno-unused-function"
 )
 
 set( A2W_FLAGS -u -L )
