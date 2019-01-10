@@ -61,7 +61,7 @@ static int global_denm_port = DENM_PORT;
 /*--- Included file: packet-denm-hf.c ---*/
 #line 1 "./asn1/denm/packet-denm-hf.c"
 static int hf_denm_DENM_PDU = -1;                 /* DENM */
-static int hf_denm_protocolVersion = -1;          /* T_protocolVersion */
+static int hf_denm_protocolVersion = -1;          /* INTEGER_0_255 */
 static int hf_denm_messageID = -1;                /* T_messageID */
 static int hf_denm_stationID = -1;                /* StationID */
 static int hf_denm_latitude = -1;                 /* Latitude */
@@ -86,7 +86,8 @@ static int hf_denm_curvatureValue = -1;           /* CurvatureValue */
 static int hf_denm_curvatureConfidence = -1;      /* CurvatureConfidence */
 static int hf_denm_headingValue = -1;             /* HeadingValue */
 static int hf_denm_headingConfidence = -1;        /* HeadingConfidence */
-static int hf_denm_hardShoulderStatus = -1;       /* HardShoulderStatus */
+static int hf_denm_innerhardShoulderStatus = -1;  /* HardShoulderStatus */
+static int hf_denm_outerhardShoulderStatus = -1;  /* HardShoulderStatus */
 static int hf_denm_drivingLaneStatus = -1;        /* DrivingLaneStatus */
 static int hf_denm_speedValue = -1;               /* SpeedValue */
 static int hf_denm_speedConfidence = -1;          /* SpeedConfidence */
@@ -102,7 +103,7 @@ static int hf_denm_elevatedTemperature = -1;      /* BOOLEAN */
 static int hf_denm_tunnelsRestricted = -1;        /* BOOLEAN */
 static int hf_denm_limitedQuantity = -1;          /* BOOLEAN */
 static int hf_denm_emergencyActionCode = -1;      /* IA5String_SIZE_1_24 */
-static int hf_denm_phoneNumber = -1;              /* IA5String_SIZE_1_24 */
+static int hf_denm_phoneNumber = -1;              /* PhoneNumber */
 static int hf_denm_companyName = -1;              /* T_companyName */
 static int hf_denm_wMInumber = -1;                /* WMInumber */
 static int hf_denm_vDS = -1;                      /* VDS */
@@ -131,6 +132,7 @@ static int hf_denm_eventDeltaTime = -1;           /* PathDeltaTime */
 static int hf_denm_informationQuality = -1;       /* InformationQuality */
 static int hf_denm_ProtectedCommunicationZonesRSU_item = -1;  /* ProtectedCommunicationZone */
 static int hf_denm_cenDsrcTollingZoneID = -1;     /* CenDsrcTollingZoneID */
+static int hf_denm_DigitalMap_item = -1;          /* ReferencePosition */
 static int hf_denm_header = -1;                   /* ItsPduHeader */
 static int hf_denm_denm = -1;                     /* DecentralizedEnvironmentalNotificationMessage */
 static int hf_denm_management = -1;               /* ManagementContainer */
@@ -287,6 +289,7 @@ static gint ett_denm_EventHistory = -1;
 static gint ett_denm_EventPoint = -1;
 static gint ett_denm_ProtectedCommunicationZonesRSU = -1;
 static gint ett_denm_CenDsrcTollingZone = -1;
+static gint ett_denm_DigitalMap = -1;
 static gint ett_denm_DENM = -1;
 static gint ett_denm_DecentralizedEnvironmentalNotificationMessage = -1;
 static gint ett_denm_ManagementContainer = -1;
@@ -305,14 +308,9 @@ static gint ett_denm_ReferenceDenms = -1;
 /*--- Included file: packet-denm-fn.c ---*/
 #line 1 "./asn1/denm/packet-denm-fn.c"
 
-static const value_string denm_T_protocolVersion_vals[] = {
-  {   1, "currentVersion" },
-  { 0, NULL }
-};
-
 
 static int
-dissect_denm_T_protocolVersion(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+dissect_denm_INTEGER_0_255(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
@@ -332,6 +330,8 @@ static const value_string denm_T_messageID_vals[] = {
   {   9, "srem" },
   {  10, "ssem" },
   {  11, "evcsn" },
+  {  12, "saem" },
+  {  13, "rtcmem" },
   { 0, NULL }
 };
 
@@ -356,7 +356,7 @@ dissect_denm_StationID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
 
 
 static const per_sequence_t ItsPduHeader_sequence[] = {
-  { &hf_denm_protocolVersion, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_T_protocolVersion },
+  { &hf_denm_protocolVersion, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_INTEGER_0_255 },
   { &hf_denm_messageID      , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_T_messageID },
   { &hf_denm_stationID      , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_StationID },
   { NULL, 0, 0, NULL }
@@ -690,7 +690,9 @@ static const value_string denm_CauseCodeType_vals[] = {
   {   1, "trafficCondition" },
   {   2, "accident" },
   {   3, "roadworks" },
+  {   5, "impassability" },
   {   6, "adverseWeatherCondition-Adhesion" },
+  {   7, "aquaplannning" },
   {   9, "hazardousLocation-SurfaceCondition" },
   {  10, "hazardousLocation-ObstacleOnTheRoad" },
   {  11, "hazardousLocation-AnimalOnTheRoad" },
@@ -735,8 +737,8 @@ dissect_denm_SubCauseCodeType(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
 
 
 static const per_sequence_t CauseCode_sequence[] = {
-  { &hf_denm_causeCode      , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_CauseCodeType },
-  { &hf_denm_subCauseCode   , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_SubCauseCodeType },
+  { &hf_denm_causeCode      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_CauseCodeType },
+  { &hf_denm_subCauseCode   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_SubCauseCodeType },
   { NULL, 0, 0, NULL }
 };
 
@@ -1243,9 +1245,7 @@ dissect_denm_PostCrashSubCauseCode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t
 
 static const value_string denm_CurvatureValue_vals[] = {
   {   0, "straight" },
-  { -30000, "reciprocalOf1MeterRadiusToRight" },
-  { 30000, "reciprocalOf1MeterRadiusToLeft" },
-  { 30001, "unavailable" },
+  { 1023, "unavailable" },
   { 0, NULL }
 };
 
@@ -1253,7 +1253,7 @@ static const value_string denm_CurvatureValue_vals[] = {
 static int
 dissect_denm_CurvatureValue(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            -30000, 30001U, NULL, FALSE);
+                                                            -1023, 1023U, NULL, FALSE);
 
   return offset;
 }
@@ -1385,15 +1385,16 @@ dissect_denm_HardShoulderStatus(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 static int
 dissect_denm_DrivingLaneStatus(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
-                                     1, 15, FALSE, NULL, NULL);
+                                     1, 13, FALSE, NULL, NULL);
 
   return offset;
 }
 
 
 static const per_sequence_t ClosedLanes_sequence[] = {
-  { &hf_denm_hardShoulderStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_HardShoulderStatus },
-  { &hf_denm_drivingLaneStatus, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_DrivingLaneStatus },
+  { &hf_denm_innerhardShoulderStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_HardShoulderStatus },
+  { &hf_denm_outerhardShoulderStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_HardShoulderStatus },
+  { &hf_denm_drivingLaneStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_DrivingLaneStatus },
   { NULL, 0, 0, NULL }
 };
 
@@ -1730,6 +1731,16 @@ dissect_denm_IA5String_SIZE_1_24(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *
 
 
 static int
+dissect_denm_PhoneNumber(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_NumericString(tvb, offset, actx, tree, hf_index,
+                                          1, 16, FALSE);
+
+  return offset;
+}
+
+
+
+static int
 dissect_denm_T_companyName(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
 #line 21 "./asn1/denm/denm.cnf"
   offset=dissect_per_octet_string(tvb, offset, actx, tree, hf_index, NO_BOUND, NO_BOUND, FALSE, NULL);
@@ -1740,14 +1751,14 @@ dissect_denm_T_companyName(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
 
 
 static const per_sequence_t DangerousGoodsExtended_sequence[] = {
-  { &hf_denm_dangerousGoodsType, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_DangerousGoodsBasic },
-  { &hf_denm_unNumber       , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_INTEGER_0_9999 },
-  { &hf_denm_elevatedTemperature, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_BOOLEAN },
-  { &hf_denm_tunnelsRestricted, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_BOOLEAN },
-  { &hf_denm_limitedQuantity, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_BOOLEAN },
-  { &hf_denm_emergencyActionCode, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_denm_IA5String_SIZE_1_24 },
-  { &hf_denm_phoneNumber    , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_denm_IA5String_SIZE_1_24 },
-  { &hf_denm_companyName    , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_denm_T_companyName },
+  { &hf_denm_dangerousGoodsType, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_DangerousGoodsBasic },
+  { &hf_denm_unNumber       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_INTEGER_0_9999 },
+  { &hf_denm_elevatedTemperature, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_BOOLEAN },
+  { &hf_denm_tunnelsRestricted, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_BOOLEAN },
+  { &hf_denm_limitedQuantity, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_BOOLEAN },
+  { &hf_denm_emergencyActionCode, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_IA5String_SIZE_1_24 },
+  { &hf_denm_phoneNumber    , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_PhoneNumber },
+  { &hf_denm_companyName    , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_T_companyName },
   { NULL, 0, 0, NULL }
 };
 
@@ -2228,11 +2239,17 @@ dissect_denm_SteeringWheelAngle(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 }
 
 
+static const value_string denm_TimestampIts_vals[] = {
+  {   0, "utcStartOf2004" },
+  {   1, "oneMillisecAfterUTCStartOf2004" },
+  { 0, NULL }
+};
+
 
 static int
 dissect_denm_TimestampIts(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
-                                     42, 42, FALSE, NULL, NULL);
+  offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index,
+                                                            0U, G_GUINT64_CONSTANT(4398046511103), NULL, FALSE);
 
   return offset;
 }
@@ -2477,12 +2494,12 @@ dissect_denm_ProtectedZoneID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
 
 
 static const per_sequence_t ProtectedCommunicationZone_sequence[] = {
-  { &hf_denm_protectedZoneType, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_ProtectedZoneType },
-  { &hf_denm_expiryTime     , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_denm_TimestampIts },
-  { &hf_denm_protectedZoneLatitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_Latitude },
-  { &hf_denm_protectedZoneLongitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_Longitude },
-  { &hf_denm_protectedZoneRadius, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_denm_ProtectedZoneRadius },
-  { &hf_denm_protectedZoneID, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_denm_ProtectedZoneID },
+  { &hf_denm_protectedZoneType, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_ProtectedZoneType },
+  { &hf_denm_expiryTime     , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_TimestampIts },
+  { &hf_denm_protectedZoneLatitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_Latitude },
+  { &hf_denm_protectedZoneLongitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_Longitude },
+  { &hf_denm_protectedZoneRadius, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_ProtectedZoneRadius },
+  { &hf_denm_protectedZoneID, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_ProtectedZoneID },
   { NULL, 0, 0, NULL }
 };
 
@@ -2607,9 +2624,9 @@ dissect_denm_CenDsrcTollingZoneID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t 
 
 
 static const per_sequence_t CenDsrcTollingZone_sequence[] = {
-  { &hf_denm_protectedZoneLatitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_Latitude },
-  { &hf_denm_protectedZoneLongitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_Longitude },
-  { &hf_denm_cenDsrcTollingZoneID, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_denm_CenDsrcTollingZoneID },
+  { &hf_denm_protectedZoneLatitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_Latitude },
+  { &hf_denm_protectedZoneLongitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_denm_Longitude },
+  { &hf_denm_cenDsrcTollingZoneID, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_denm_CenDsrcTollingZoneID },
   { NULL, 0, 0, NULL }
 };
 
@@ -2617,6 +2634,30 @@ static int
 dissect_denm_CenDsrcTollingZone(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_denm_CenDsrcTollingZone, CenDsrcTollingZone_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t DigitalMap_sequence_of[1] = {
+  { &hf_denm_DigitalMap_item, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_denm_ReferencePosition },
+};
+
+static int
+dissect_denm_DigitalMap(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
+                                                  ett_denm_DigitalMap, DigitalMap_sequence_of,
+                                                  1, 256, FALSE);
+
+  return offset;
+}
+
+
+
+static int
+dissect_denm_OpeningDaysHours(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_UTF8String(tvb, offset, actx, tree, hf_index,
+                                          NO_BOUND, NO_BOUND, FALSE);
 
   return offset;
 }
@@ -2888,8 +2929,8 @@ void proto_register_denm(void) {
         NULL, HFILL }},
     { &hf_denm_protocolVersion,
       { "protocolVersion", "denm.protocolVersion",
-        FT_UINT32, BASE_DEC, VALS(denm_T_protocolVersion_vals), 0,
-        NULL, HFILL }},
+        FT_UINT32, BASE_DEC, NULL, 0,
+        "INTEGER_0_255", HFILL }},
     { &hf_denm_messageID,
       { "messageID", "denm.messageID",
         FT_UINT32, BASE_DEC, VALS(denm_T_messageID_vals), 0,
@@ -2986,10 +3027,14 @@ void proto_register_denm(void) {
       { "headingConfidence", "denm.headingConfidence",
         FT_UINT32, BASE_DEC, VALS(denm_HeadingConfidence_vals), 0,
         NULL, HFILL }},
-    { &hf_denm_hardShoulderStatus,
-      { "hardShoulderStatus", "denm.hardShoulderStatus",
+    { &hf_denm_innerhardShoulderStatus,
+      { "innerhardShoulderStatus", "denm.innerhardShoulderStatus",
         FT_UINT32, BASE_DEC, VALS(denm_HardShoulderStatus_vals), 0,
-        NULL, HFILL }},
+        "HardShoulderStatus", HFILL }},
+    { &hf_denm_outerhardShoulderStatus,
+      { "outerhardShoulderStatus", "denm.outerhardShoulderStatus",
+        FT_UINT32, BASE_DEC, VALS(denm_HardShoulderStatus_vals), 0,
+        "HardShoulderStatus", HFILL }},
     { &hf_denm_drivingLaneStatus,
       { "drivingLaneStatus", "denm.drivingLaneStatus",
         FT_BYTES, BASE_NONE, NULL, 0,
@@ -3053,7 +3098,7 @@ void proto_register_denm(void) {
     { &hf_denm_phoneNumber,
       { "phoneNumber", "denm.phoneNumber",
         FT_STRING, BASE_NONE, NULL, 0,
-        "IA5String_SIZE_1_24", HFILL }},
+        NULL, HFILL }},
     { &hf_denm_companyName,
       { "companyName", "denm.companyName",
         FT_STRING, BASE_NONE, NULL, 0,
@@ -3112,7 +3157,7 @@ void proto_register_denm(void) {
         NULL, HFILL }},
     { &hf_denm_expiryTime,
       { "expiryTime", "denm.expiryTime",
-        FT_BYTES, BASE_NONE, NULL, 0,
+        FT_UINT64, BASE_DEC, VALS(denm_TimestampIts_vals), 0,
         "TimestampIts", HFILL }},
     { &hf_denm_protectedZoneLatitude,
       { "protectedZoneLatitude", "denm.protectedZoneLatitude",
@@ -3166,6 +3211,10 @@ void proto_register_denm(void) {
       { "cenDsrcTollingZoneID", "denm.cenDsrcTollingZoneID",
         FT_UINT32, BASE_DEC, NULL, 0,
         NULL, HFILL }},
+    { &hf_denm_DigitalMap_item,
+      { "ReferencePosition", "denm.ReferencePosition_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
     { &hf_denm_header,
       { "header", "denm.header_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -3196,11 +3245,11 @@ void proto_register_denm(void) {
         NULL, HFILL }},
     { &hf_denm_detectionTime,
       { "detectionTime", "denm.detectionTime",
-        FT_BYTES, BASE_NONE, NULL, 0,
+        FT_UINT64, BASE_DEC, VALS(denm_TimestampIts_vals), 0,
         "TimestampIts", HFILL }},
     { &hf_denm_referenceTime,
       { "referenceTime", "denm.referenceTime",
-        FT_BYTES, BASE_NONE, NULL, 0,
+        FT_UINT64, BASE_DEC, VALS(denm_TimestampIts_vals), 0,
         "TimestampIts", HFILL }},
     { &hf_denm_termination,
       { "termination", "denm.termination",
@@ -3643,6 +3692,7 @@ void proto_register_denm(void) {
     &ett_denm_EventPoint,
     &ett_denm_ProtectedCommunicationZonesRSU,
     &ett_denm_CenDsrcTollingZone,
+    &ett_denm_DigitalMap,
     &ett_denm_DENM,
     &ett_denm_DecentralizedEnvironmentalNotificationMessage,
     &ett_denm_ManagementContainer,

@@ -61,7 +61,7 @@ static int global_cam_port = CAM_PORT;
 /*--- Included file: packet-cam-hf.c ---*/
 #line 1 "./asn1/cam/packet-cam-hf.c"
 static int hf_cam_CAM_PDU = -1;                   /* CAM */
-static int hf_cam_protocolVersion = -1;           /* T_protocolVersion */
+static int hf_cam_protocolVersion = -1;           /* INTEGER_0_255 */
 static int hf_cam_messageID = -1;                 /* T_messageID */
 static int hf_cam_stationID = -1;                 /* StationID */
 static int hf_cam_latitude = -1;                  /* Latitude */
@@ -86,7 +86,8 @@ static int hf_cam_curvatureValue = -1;            /* CurvatureValue */
 static int hf_cam_curvatureConfidence = -1;       /* CurvatureConfidence */
 static int hf_cam_headingValue = -1;              /* HeadingValue */
 static int hf_cam_headingConfidence = -1;         /* HeadingConfidence */
-static int hf_cam_hardShoulderStatus = -1;        /* HardShoulderStatus */
+static int hf_cam_innerhardShoulderStatus = -1;   /* HardShoulderStatus */
+static int hf_cam_outerhardShoulderStatus = -1;   /* HardShoulderStatus */
 static int hf_cam_drivingLaneStatus = -1;         /* DrivingLaneStatus */
 static int hf_cam_speedValue = -1;                /* SpeedValue */
 static int hf_cam_speedConfidence = -1;           /* SpeedConfidence */
@@ -102,7 +103,7 @@ static int hf_cam_elevatedTemperature = -1;       /* BOOLEAN */
 static int hf_cam_tunnelsRestricted = -1;         /* BOOLEAN */
 static int hf_cam_limitedQuantity = -1;           /* BOOLEAN */
 static int hf_cam_emergencyActionCode = -1;       /* IA5String_SIZE_1_24 */
-static int hf_cam_phoneNumber = -1;               /* IA5String_SIZE_1_24 */
+static int hf_cam_phoneNumber = -1;               /* PhoneNumber */
 static int hf_cam_companyName = -1;               /* T_companyName */
 static int hf_cam_wMInumber = -1;                 /* WMInumber */
 static int hf_cam_vDS = -1;                       /* VDS */
@@ -131,6 +132,7 @@ static int hf_cam_eventDeltaTime = -1;            /* PathDeltaTime */
 static int hf_cam_informationQuality = -1;        /* InformationQuality */
 static int hf_cam_ProtectedCommunicationZonesRSU_item = -1;  /* ProtectedCommunicationZone */
 static int hf_cam_cenDsrcTollingZoneID = -1;      /* CenDsrcTollingZoneID */
+static int hf_cam_DigitalMap_item = -1;           /* ReferencePosition */
 static int hf_cam_header = -1;                    /* ItsPduHeader */
 static int hf_cam_cam = -1;                       /* CoopAwareness */
 static int hf_cam_generationDeltaTime = -1;       /* GenerationDeltaTime */
@@ -281,6 +283,7 @@ static gint ett_cam_EventHistory = -1;
 static gint ett_cam_EventPoint = -1;
 static gint ett_cam_ProtectedCommunicationZonesRSU = -1;
 static gint ett_cam_CenDsrcTollingZone = -1;
+static gint ett_cam_DigitalMap = -1;
 static gint ett_cam_CAM = -1;
 static gint ett_cam_CoopAwareness = -1;
 static gint ett_cam_CamParameters = -1;
@@ -306,14 +309,9 @@ static gint ett_cam_RSUContainerHighFrequency = -1;
 /*--- Included file: packet-cam-fn.c ---*/
 #line 1 "./asn1/cam/packet-cam-fn.c"
 
-static const value_string cam_T_protocolVersion_vals[] = {
-  {   1, "currentVersion" },
-  { 0, NULL }
-};
-
 
 static int
-dissect_cam_T_protocolVersion(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+dissect_cam_INTEGER_0_255(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
@@ -333,6 +331,8 @@ static const value_string cam_T_messageID_vals[] = {
   {   9, "srem" },
   {  10, "ssem" },
   {  11, "evcsn" },
+  {  12, "saem" },
+  {  13, "rtcmem" },
   { 0, NULL }
 };
 
@@ -357,7 +357,7 @@ dissect_cam_StationID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
 
 
 static const per_sequence_t ItsPduHeader_sequence[] = {
-  { &hf_cam_protocolVersion , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_T_protocolVersion },
+  { &hf_cam_protocolVersion , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_INTEGER_0_255 },
   { &hf_cam_messageID       , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_T_messageID },
   { &hf_cam_stationID       , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_StationID },
   { NULL, 0, 0, NULL }
@@ -691,7 +691,9 @@ static const value_string cam_CauseCodeType_vals[] = {
   {   1, "trafficCondition" },
   {   2, "accident" },
   {   3, "roadworks" },
+  {   5, "impassability" },
   {   6, "adverseWeatherCondition-Adhesion" },
+  {   7, "aquaplannning" },
   {   9, "hazardousLocation-SurfaceCondition" },
   {  10, "hazardousLocation-ObstacleOnTheRoad" },
   {  11, "hazardousLocation-AnimalOnTheRoad" },
@@ -736,8 +738,8 @@ dissect_cam_SubCauseCodeType(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
 
 
 static const per_sequence_t CauseCode_sequence[] = {
-  { &hf_cam_causeCode       , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_CauseCodeType },
-  { &hf_cam_subCauseCode    , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_SubCauseCodeType },
+  { &hf_cam_causeCode       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_CauseCodeType },
+  { &hf_cam_subCauseCode    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_SubCauseCodeType },
   { NULL, 0, 0, NULL }
 };
 
@@ -1244,9 +1246,7 @@ dissect_cam_PostCrashSubCauseCode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t 
 
 static const value_string cam_CurvatureValue_vals[] = {
   {   0, "straight" },
-  { -30000, "reciprocalOf1MeterRadiusToRight" },
-  { 30000, "reciprocalOf1MeterRadiusToLeft" },
-  { 30001, "unavailable" },
+  { 1023, "unavailable" },
   { 0, NULL }
 };
 
@@ -1254,7 +1254,7 @@ static const value_string cam_CurvatureValue_vals[] = {
 static int
 dissect_cam_CurvatureValue(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            -30000, 30001U, NULL, FALSE);
+                                                            -1023, 1023U, NULL, FALSE);
 
   return offset;
 }
@@ -1386,15 +1386,16 @@ dissect_cam_HardShoulderStatus(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 static int
 dissect_cam_DrivingLaneStatus(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
-                                     1, 15, FALSE, NULL, NULL);
+                                     1, 13, FALSE, NULL, NULL);
 
   return offset;
 }
 
 
 static const per_sequence_t ClosedLanes_sequence[] = {
-  { &hf_cam_hardShoulderStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_HardShoulderStatus },
-  { &hf_cam_drivingLaneStatus, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_DrivingLaneStatus },
+  { &hf_cam_innerhardShoulderStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_HardShoulderStatus },
+  { &hf_cam_outerhardShoulderStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_HardShoulderStatus },
+  { &hf_cam_drivingLaneStatus, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_DrivingLaneStatus },
   { NULL, 0, 0, NULL }
 };
 
@@ -1731,6 +1732,16 @@ dissect_cam_IA5String_SIZE_1_24(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 
 
 static int
+dissect_cam_PhoneNumber(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_NumericString(tvb, offset, actx, tree, hf_index,
+                                          1, 16, FALSE);
+
+  return offset;
+}
+
+
+
+static int
 dissect_cam_T_companyName(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
 #line 21 "./asn1/cam/cam.cnf"
   offset=dissect_per_octet_string(tvb, offset, actx, tree, hf_index, NO_BOUND, NO_BOUND, FALSE, NULL);
@@ -1741,14 +1752,14 @@ dissect_cam_T_companyName(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 
 static const per_sequence_t DangerousGoodsExtended_sequence[] = {
-  { &hf_cam_dangerousGoodsType, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_DangerousGoodsBasic },
-  { &hf_cam_unNumber        , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_INTEGER_0_9999 },
-  { &hf_cam_elevatedTemperature, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_BOOLEAN },
-  { &hf_cam_tunnelsRestricted, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_BOOLEAN },
-  { &hf_cam_limitedQuantity , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_BOOLEAN },
-  { &hf_cam_emergencyActionCode, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_cam_IA5String_SIZE_1_24 },
-  { &hf_cam_phoneNumber     , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_cam_IA5String_SIZE_1_24 },
-  { &hf_cam_companyName     , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_cam_T_companyName },
+  { &hf_cam_dangerousGoodsType, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_DangerousGoodsBasic },
+  { &hf_cam_unNumber        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_INTEGER_0_9999 },
+  { &hf_cam_elevatedTemperature, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_BOOLEAN },
+  { &hf_cam_tunnelsRestricted, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_BOOLEAN },
+  { &hf_cam_limitedQuantity , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_BOOLEAN },
+  { &hf_cam_emergencyActionCode, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_IA5String_SIZE_1_24 },
+  { &hf_cam_phoneNumber     , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_PhoneNumber },
+  { &hf_cam_companyName     , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_T_companyName },
   { NULL, 0, 0, NULL }
 };
 
@@ -2229,6 +2240,12 @@ dissect_cam_SteeringWheelAngle(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 }
 
 
+static const value_string cam_TimestampIts_vals[] = {
+  {   0, "utcStartOf2004" },
+  {   1, "oneMillisecAfterUTCStartOf2004" },
+  { 0, NULL }
+};
+
 
 static int
 dissect_cam_TimestampIts(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
@@ -2479,12 +2496,12 @@ dissect_cam_ProtectedZoneID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 
 
 static const per_sequence_t ProtectedCommunicationZone_sequence[] = {
-  { &hf_cam_protectedZoneType, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_ProtectedZoneType },
-  { &hf_cam_expiryTime      , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_cam_TimestampIts },
-  { &hf_cam_protectedZoneLatitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_Latitude },
-  { &hf_cam_protectedZoneLongitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_Longitude },
-  { &hf_cam_protectedZoneRadius, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_cam_ProtectedZoneRadius },
-  { &hf_cam_protectedZoneID , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_cam_ProtectedZoneID },
+  { &hf_cam_protectedZoneType, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_ProtectedZoneType },
+  { &hf_cam_expiryTime      , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_TimestampIts },
+  { &hf_cam_protectedZoneLatitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_Latitude },
+  { &hf_cam_protectedZoneLongitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_Longitude },
+  { &hf_cam_protectedZoneRadius, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_ProtectedZoneRadius },
+  { &hf_cam_protectedZoneID , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_ProtectedZoneID },
   { NULL, 0, 0, NULL }
 };
 
@@ -2609,9 +2626,9 @@ dissect_cam_CenDsrcTollingZoneID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *
 
 
 static const per_sequence_t CenDsrcTollingZone_sequence[] = {
-  { &hf_cam_protectedZoneLatitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_Latitude },
-  { &hf_cam_protectedZoneLongitude, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_Longitude },
-  { &hf_cam_cenDsrcTollingZoneID, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_cam_CenDsrcTollingZoneID },
+  { &hf_cam_protectedZoneLatitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_Latitude },
+  { &hf_cam_protectedZoneLongitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_cam_Longitude },
+  { &hf_cam_cenDsrcTollingZoneID, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_cam_CenDsrcTollingZoneID },
   { NULL, 0, 0, NULL }
 };
 
@@ -2619,6 +2636,30 @@ static int
 dissect_cam_CenDsrcTollingZone(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_cam_CenDsrcTollingZone, CenDsrcTollingZone_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t DigitalMap_sequence_of[1] = {
+  { &hf_cam_DigitalMap_item , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_cam_ReferencePosition },
+};
+
+static int
+dissect_cam_DigitalMap(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
+                                                  ett_cam_DigitalMap, DigitalMap_sequence_of,
+                                                  1, 256, FALSE);
+
+  return offset;
+}
+
+
+
+static int
+dissect_cam_OpeningDaysHours(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_UTF8String(tvb, offset, actx, tree, hf_index,
+                                          NO_BOUND, NO_BOUND, FALSE);
 
   return offset;
 }
@@ -3003,8 +3044,8 @@ void proto_register_cam(void) {
         NULL, HFILL }},
     { &hf_cam_protocolVersion,
       { "protocolVersion", "cam.protocolVersion",
-        FT_UINT32, BASE_DEC, VALS(cam_T_protocolVersion_vals), 0,
-        NULL, HFILL }},
+        FT_UINT32, BASE_DEC, NULL, 0,
+        "INTEGER_0_255", HFILL }},
     { &hf_cam_messageID,
       { "messageID", "cam.messageID",
         FT_UINT32, BASE_DEC, VALS(cam_T_messageID_vals), 0,
@@ -3101,10 +3142,14 @@ void proto_register_cam(void) {
       { "headingConfidence", "cam.headingConfidence",
         FT_UINT32, BASE_DEC, VALS(cam_HeadingConfidence_vals), 0,
         NULL, HFILL }},
-    { &hf_cam_hardShoulderStatus,
-      { "hardShoulderStatus", "cam.hardShoulderStatus",
+    { &hf_cam_innerhardShoulderStatus,
+      { "innerhardShoulderStatus", "cam.innerhardShoulderStatus",
         FT_UINT32, BASE_DEC, VALS(cam_HardShoulderStatus_vals), 0,
-        NULL, HFILL }},
+        "HardShoulderStatus", HFILL }},
+    { &hf_cam_outerhardShoulderStatus,
+      { "outerhardShoulderStatus", "cam.outerhardShoulderStatus",
+        FT_UINT32, BASE_DEC, VALS(cam_HardShoulderStatus_vals), 0,
+        "HardShoulderStatus", HFILL }},
     { &hf_cam_drivingLaneStatus,
       { "drivingLaneStatus", "cam.drivingLaneStatus",
         FT_BYTES, BASE_NONE, NULL, 0,
@@ -3168,7 +3213,7 @@ void proto_register_cam(void) {
     { &hf_cam_phoneNumber,
       { "phoneNumber", "cam.phoneNumber",
         FT_STRING, BASE_NONE, NULL, 0,
-        "IA5String_SIZE_1_24", HFILL }},
+        NULL, HFILL }},
     { &hf_cam_companyName,
       { "companyName", "cam.companyName",
         FT_STRING, BASE_NONE, NULL, 0,
@@ -3227,7 +3272,7 @@ void proto_register_cam(void) {
         NULL, HFILL }},
     { &hf_cam_expiryTime,
       { "expiryTime", "cam.expiryTime",
-        FT_BYTES, BASE_NONE, NULL, 0,
+        FT_UINT64, BASE_DEC, VALS(cam_TimestampIts_vals), 0,
         "TimestampIts", HFILL }},
     { &hf_cam_protectedZoneLatitude,
       { "protectedZoneLatitude", "cam.protectedZoneLatitude",
@@ -3280,6 +3325,10 @@ void proto_register_cam(void) {
     { &hf_cam_cenDsrcTollingZoneID,
       { "cenDsrcTollingZoneID", "cam.cenDsrcTollingZoneID",
         FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_cam_DigitalMap_item,
+      { "ReferencePosition", "cam.ReferencePosition_element",
+        FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_cam_header,
       { "header", "cam.header_element",
@@ -3734,6 +3783,7 @@ void proto_register_cam(void) {
     &ett_cam_EventPoint,
     &ett_cam_ProtectedCommunicationZonesRSU,
     &ett_cam_CenDsrcTollingZone,
+    &ett_cam_DigitalMap,
     &ett_cam_CAM,
     &ett_cam_CoopAwareness,
     &ett_cam_CamParameters,
