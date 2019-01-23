@@ -14,7 +14,7 @@ UNALIGNED
 DENM
 
 #.FN_BODY TimestampIts
-#  offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index, 0U, G_GUINT64_CONSTANT(4398046511103), NULL, FALSE);
+  offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index, 0U, G_GUINT64_CONSTANT(4398046511103), NULL, FALSE);
 #.END
 
 #.FN_BODY DangerousGoodsExtended/companyName

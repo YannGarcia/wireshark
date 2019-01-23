@@ -3298,9 +3298,19 @@ dissect_ieee1609dot2_unsecured_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_
     //guint8 tag;
     gint len;
     tvbuff_t *next_tvb;
-    
+
     len = tvb_get_guint8(tvb, offset);
-    offset += 1;
+    if ((len & 0x80) == 0x00) {
+      len = tvb_get_guint8(tvb, offset);
+      offset += 1;
+    } else if ((len & 0x01) == 0x01) { // Length on on byte
+      len = tvb_get_guint8(tvb, offset + 1);
+      offset += 2;
+    } else if ((len & 0x02) == 0x02) { // Lenght on two bytes
+      offset += 1;
+      len = tvb_get_guint8(tvb, offset) << 8 | tvb_get_guint8(tvb, offset + 1);
+      offset += 2;
+    } // Assume length <= 65535
     printf("dissect_ieee1609dot2_unsecured_data_packet: len = %d - offset = %d\n", len, offset);
     /* Sec Header tree - See IEEE Std 1609.2a-2017 */
     sh_ti = proto_tree_add_item(tree, hf_1609dot2_unsecured_data_packet, tvb, offset, len, FALSE);
@@ -3345,11 +3355,19 @@ dissect_ieee1609dot2_header_info_packet(tvbuff_t *tvb, packet_info *pinfo, proto
       tree_gn_cert_time64(tvb, sh_tree, hf_gn_sh_field_exptime, offset);
       offset += 8;
     }
+    if ((tag & 0x10) == 0x10) { // Decode generation_time
+      tree_gn_cert_time64(tvb, sh_tree, hf_gn_sh_field_gentime, offset);
+      offset += 8;
+    }
     /* TODO with 10, 08, 04, 02, 01
     if ((tag & 0x20) == 0x20) { // Decode generation_time
       tree_gn_cert_time64(tvb, sh_tree, hf_gn_sh_field_gentime, offset);
       offset += 8;
       }*/
+    if ((tag & 0x02) == 0x02) { // Decode inlineP2pcdRequest (request unrecognised certificate)
+      offset += 4;
+      offset += tree_hashedId3_list(tvb, sh_tree, offset);
+    }
 
     proto_item_set_len(sh_ti, offset - sh_length);
   }

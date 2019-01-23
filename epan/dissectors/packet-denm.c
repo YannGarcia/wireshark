@@ -2248,8 +2248,9 @@ static const value_string denm_TimestampIts_vals[] = {
 
 static int
 dissect_denm_TimestampIts(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index,
-                                                            0U, G_GUINT64_CONSTANT(4398046511103), NULL, FALSE);
+#line 17 "./asn1/denm/denm.cnf"
+  offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index, 0U, G_GUINT64_CONSTANT(4398046511103), NULL, FALSE);
+
 
   return offset;
 }
