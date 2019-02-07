@@ -2370,7 +2370,7 @@ dissect_ieee1609dot2_public_verification_key_packet(tvbuff_t *tvb, packet_info *
     printf("dissect_ieee1609dot2_verification_key_packet: tag: '%x'\n", tag);
     offset += 1;
 
-    if ((tag & 0x7f) == 0x00) {
+    if (((tag & 0x7f) == 0x00) || ((tag & 0x7f) == 0x01)) {
       offset = dissect_ieee1609dot2_eccP256CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_nistp_256, ett_1609dot2_public_verification_key);
     } else {
       offset = dissect_ieee1609dot2_eccP384CurvePoint_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_ecdsa_brainpoolp_384, ett_1609dot2_public_verification_key);
@@ -2667,15 +2667,17 @@ dissect_ieee1609dot2_appPermissions_packet(tvbuff_t *tvb, packet_info *pinfo _U_
     sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_app_permissions_packet);
     
     len = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
-    printf("dissect_ieee1609dot2_toBeSignedCertificate_packet: len=%d\n", len);
+    printf("dissect_ieee1609dot2_appPermissions_packet: len=%d\n", len);
     offset += 1;
-    if (len == 1) {
+    if (len == 0) {
+      return offset;
+    } else if (len == 1) {
       items = tvb_get_guint8(tvb, offset); /* Length in bytes of the number of items */
     } if (len == 2) {
       items = tvb_get_guint16(tvb, offset, ENC_BIG_ENDIAN); /* Length in bytes of the number of items */
     } // else, not reallistic
     offset += len;
-    printf("dissect_ieee1609dot2_toBeSignedCertificate_packet: #items=%d\n", items);
+    printf("dissect_ieee1609dot2_appPermissions_packet: #items=%d\n", items);
     for (int i = 0; i < items; i++) {
       offset = dissect_ieee1609dot2_psid_ssp_packet(tvb, pinfo, sh_tree, offset);
     } // End of 'for' statement
@@ -3098,8 +3100,8 @@ dissect_ieee1609dot2_certificate_packet(tvbuff_t *tvb, packet_info *pinfo, proto
       
       // Signature
       if ((tag & 0x01) == 0x00) {
-	printf("dissect_ieee1609dot2_certificate_packet: Process signature\n");
-	offset = dissect_ieee1609dot2_signature_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_certificate_signature);
+        printf("dissect_ieee1609dot2_certificate_packet: Process signature\n");
+        offset = dissect_ieee1609dot2_signature_packet(tvb, pinfo, sh_tree, offset, hf_1609dot2_certificate_signature);
       }
       printf("dissect_ieee1609dot2_certificate_packet: offset: '%x'\n", offset);
       g_sign_record.issuer_length = offset - issuer_offset;

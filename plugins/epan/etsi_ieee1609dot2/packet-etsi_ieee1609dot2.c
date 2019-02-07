@@ -1782,6 +1782,110 @@ dissect_ieee1609dot2_enc_data_key_data_packet(tvbuff_t *tvb, packet_info *pinfo,
 } // End of function dissect_ieee1609dot2_enc_data_key_data_packet
 
 static int
+dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet: offset=0x%02x\n", offset);
+  if (tree) { /* we are being asked for details */
+    gint sh_length;
+    gint len;
+
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_aes_128_ccm_cipher_text_data_packet, tvb, offset, -1, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_aes_128_ccm_cipher_text_data_packet);
+
+    sh_length = offset;
+    
+    // OCTET STRING (SIZE (12))
+    g_decrypt_record.nonce = (gchar*)wmem_alloc(wmem_packet_scope(), 12);
+    tvb_memcpy(tvb, (char*)g_decrypt_record.nonce, offset, 12);
+    proto_tree_add_item(sh_tree, hf_1609dot2_nonce, tvb, offset, 12, FALSE);
+    offset += 12;
+    // Ciphered text
+    len = tvb_get_guint8(tvb, offset);
+    if ((len & 0x80) == 0x00) {
+      len = tvb_get_guint8(tvb, offset);
+      offset += 1;
+    } else if ((len & 0x01) == 0x01) { // Length on on byte
+      len = tvb_get_guint8(tvb, offset + 1);
+      offset += 2;
+    } else if ((len & 0x02) == 0x02) { // Lenght on two bytes
+      offset += 1;
+      len = tvb_get_guint8(tvb, offset) << 8 | tvb_get_guint8(tvb, offset + 1);
+      offset += 2;
+    } // Assume length <= 65535
+    proto_tree_add_item(sh_tree, hf_gn_st_opaque, tvb, offset, len, FALSE);
+    if (g_options.enable_encryption_decode) {
+      printf("dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet: Start decryption");
+      decrypt_and_decode_pki_message(tvb, pinfo, tree, offset, len);
+    }
+    
+    offset += len;    
+    proto_item_set_len(sh_ti, offset - sh_length);
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet
+
+static int
+dissect_ieee1609dot2_ciphertext_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_ciphertext_data_packet: offset=0x%02x\n", offset);
+  if (tree) { /* we are being asked for details */
+    guint8 tag;
+    gint sh_length;
+
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_ciphertext_data_packet, tvb, offset, -1, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_ciphertext_data_packet);
+
+    sh_length = offset;
+    
+    /* Sequence Tag */
+    tag = tvb_get_guint8(tvb, offset);
+    printf("dissect_ieee1609dot2_ciphertext_data_packet: tag: '%x'\n", tag);
+    offset += 1;
+    if ((tag & 0x7f) == 0x00) {
+      offset = dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvb, pinfo, sh_tree, offset);
+    }
+    
+    proto_item_set_len(sh_ti, offset - sh_length);
+  }
+
+  return offset;
+} // End of function dissect_ieee1609dot2_ciphertext_data_packet
+
+static int
+dissect_ieee1609dot2_symm_recipient_info_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
+{
+  proto_tree *sh_tree = NULL;
+  proto_item *sh_ti = NULL;
+
+  printf(">>> dissect_ieee1609dot2_symm_recipient_info_packet: offset=0x%02x\n", offset);
+  if (tree) { /* we are being asked for details */
+    gint sh_length;
+    
+    /* Sec Header tree - See IEEE Std 1609.2a-2017 */
+    sh_ti = proto_tree_add_item(tree, hf_1609dot2_pk_recipient_info_packet, tvb, offset, -1, FALSE);
+    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_pk_recipient_info_packet);
+
+    sh_length = offset;
+    
+    proto_tree_add_item(sh_tree, hf_gn_sh_field_hashedid8, tvb, offset, 8, FALSE);
+    offset += 8;
+    offset = dissect_ieee1609dot2_ciphertext_data_packet(tvb, pinfo, sh_tree, offset);
+
+    proto_item_set_len(sh_ti, offset - sh_length);
+  }
+  
+  return offset;
+} // End of function dissect_ieee1609dot2_symm_recipient_info_packet
+
+
+static int
 dissect_ieee1609dot2_pk_recipient_info_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 {
   proto_tree *sh_tree = NULL;
@@ -1828,9 +1932,10 @@ dissect_ieee1609dot2_recipient_info_packet(tvbuff_t *tvb, packet_info *pinfo, pr
     printf("dissect_ieee1609dot2_recipient_info_packet: tag: '%x'\n", tag);
     offset += 1;
     if ((tag & 0x7f) == 0x00) {
-      //offset = 
+      proto_tree_add_item(sh_tree, hf_gn_sh_field_hashedid8, tvb, offset, 8, FALSE);
+      offset += 8;
     } else if ((tag & 0x7f) == 0x01) {
-      //offset = dissect_ieee1609dot2_certificate_packet(tvb, pinfo, sh_tree, offset);
+      offset = dissect_ieee1609dot2_symm_recipient_info_packet(tvb, pinfo, sh_tree, offset);
     } else if ((tag & 0x7f) == 0x02) {
       offset = dissect_ieee1609dot2_pk_recipient_info_packet(tvb, pinfo, sh_tree, offset);
     } else if ((tag & 0x7f) == 0x03) {
@@ -1874,77 +1979,6 @@ dissect_ieee1609dot2_recipient_info_data_packet(tvbuff_t *tvb, packet_info *pinf
 
   return offset;
 } // End of function dissect_ieee1609dot2_recipient_info_data_packet
-
-static int
-dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
-{
-  proto_tree *sh_tree = NULL;
-  proto_item *sh_ti = NULL;
-
-  printf(">>> dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet: offset=0x%02x\n", offset);
-  if (tree) { /* we are being asked for details */
-    gint sh_length;
-    gint len;
-
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_aes_128_ccm_cipher_text_data_packet, tvb, offset, -1, FALSE);
-    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_aes_128_ccm_cipher_text_data_packet);
-
-    sh_length = offset;
-    
-    // OCTET STRING (SIZE (12))
-    g_decrypt_record.nonce = (gchar*)wmem_alloc(wmem_packet_scope(), 12);
-    tvb_memcpy(tvb, (char*)g_decrypt_record.nonce, offset, 12);
-    proto_tree_add_item(sh_tree, hf_1609dot2_nonce, tvb, offset, 12, FALSE);
-    offset += 12;
-    // Ciphered text
-    len = tvb_get_guint8(tvb, offset);
-    offset += 1;
-    if ((len & 0x80) == 0x80) { // TODO To be refined, assume that cyphered text length is less than 65535 (2 bytes)
-      len = (guint16)(tvb_get_guint8(tvb, offset) << 8) | (guint16)tvb_get_guint8(tvb, offset + 1);
-      offset += 2;
-    }
-    proto_tree_add_item(sh_tree, hf_gn_st_opaque, tvb, offset, len, FALSE);
-    if (g_options.enable_encryption_decode) {
-      printf("dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet: Start decryption");
-      decrypt_and_decode_pki_message(tvb, pinfo, tree, offset, len);
-    }
-    
-    offset += len;    
-    proto_item_set_len(sh_ti, offset - sh_length);
-  }
-
-  return offset;
-} // End of function dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet
-
-static int
-dissect_ieee1609dot2_ciphertext_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
-{
-  proto_tree *sh_tree = NULL;
-  proto_item *sh_ti = NULL;
-
-  printf(">>> dissect_ieee1609dot2_ciphertext_data_packet: offset=0x%02x\n", offset);
-  if (tree) { /* we are being asked for details */
-    guint8 tag;
-    gint sh_length;
-
-    sh_ti = proto_tree_add_item(tree, hf_1609dot2_ciphertext_data_packet, tvb, offset, -1, FALSE);
-    sh_tree = proto_item_add_subtree(sh_ti, ett_1609dot2_ciphertext_data_packet);
-
-    sh_length = offset;
-    
-    /* Sequence Tag */
-    tag = tvb_get_guint8(tvb, offset);
-    printf("dissect_ieee1609dot2_ciphertext_data_packet: tag: '%x'\n", tag);
-    offset += 1;
-    if ((tag & 0x7f) == 0x00) {
-      offset = dissect_ieee1609dot2_aes_128_ccm_cipher_text_data_packet(tvb, pinfo, sh_tree, offset);
-    }
-    
-    proto_item_set_len(sh_ti, offset - sh_length);
-  }
-
-  return offset;
-} // End of function dissect_ieee1609dot2_ciphertext_data_packet
 
 static int
 dissect_ieee1609dot2_encrypted_data_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset)
