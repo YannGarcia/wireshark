@@ -102,6 +102,10 @@ void proto_reg_handoff_gn(void);
 #define ITSUT_SREM_UPDATE_EVENT_RESULT         0xAE
 #define ITSUT_SREMEVENTINDICATION              0xAF
 #define ITSUT_SSEMEVENTINDICATION              0xB0
+/* PKI */
+#define ITSUT_PKI_TRIGGER_EVENT_EC             0xBB
+#define ITSUT_PKI_TRIGGER_EVENT_AT             0xBD
+#define ITSUT_PKI_TRIGGER_EVENT_RESULT         0xBC
 
 /* Names table indexes */
 #define IDX_RESULT_OK                   0x01
@@ -170,9 +174,14 @@ void proto_reg_handoff_gn(void);
 #define L_ITSUT_SREM_TRIGGER_EVENT                    1
 #define L_ITSUT_SREM_TRIGGER_EVENT_RESULT             2
 #define L_ITSUT_SREM_TRIGGER_EVENT_RESULT_CODE        1
-#define L_ITSUT_SREM_UPDATE_EVENT                    1
+#define L_ITSUT_SREM_UPDATE_EVENT                     1
 #define L_ITSUT_SREM_UPDATE_EVENT_RESULT              2
 #define L_ITSUT_SREM_UPDATE_EVENT_RESULT_CODE         1
+/* PKI */
+#define L_ITSUT_PKI_TRIGGER_EVENT_EC      1
+#define L_ITSUT_PKI_TRIGGER_EVENT_AT      1
+#define L_ITSUT_PKIM_TRIGGER_EVENT_RESULT 2
+#define L_ITSUT_PKIM_TRIGGER_RESULT_CODE  1
 
 /* Parameters length */
 #define L_HASHEDID8                     8
@@ -226,6 +235,10 @@ void proto_reg_handoff_gn(void);
 #define L_REPETITIONINTERVAL_IVIM       6
 #define L_SREM_TRIGGER_EVENT            1
 #define L_SREM_UPDATE_EVENT             1
+#define L_PKI_TRIGGER_EVENT_RESULT      1
+#define L_PKI_TRIGGER_EVENT_RESULT_CODE 1
+#define L_PKI_TRIGGER_EVENT_EC          1
+#define L_PKI_TRIGGER_EVENT_AT          1
 
 /* Function declarations */
 void proto_reg_handoff_itsut(void);
@@ -458,6 +471,14 @@ static int hf_ssem_event_indication = -1;
 static int hf_ssem_event_indication_length = -1;
 static int hf_ssem_event_indication_payload = -1;
 
+/* ITSUT PKI Trigger Event */
+static int hf_pki_trigger_event_ec = -1;
+static int hf_pki_trigger_event_at = -1;
+
+/* ITSUT SREM Trigger Result */
+static int hf_pki_trigger_event_result = -1;
+static int hf_pki_trigger_event_result_code = -1;
+
 /* CAM Parameters */
 static int hf_curvature = -1;
 static int hf_delta_latitude = -1;
@@ -574,6 +595,9 @@ static const value_string itsut_command_names[] = {
     { ITSUT_SREM_UPDATE_EVENT_RESULT,      "SREM Update Result" },
     { ITSUT_SREMEVENTINDICATION,           "SREM Event Indication" },
     { ITSUT_SSEMEVENTINDICATION,           "SSEM Event Indication" },
+    { ITSUT_PKI_TRIGGER_EVENT_EC,          "PKI Trigger Enrolment request" },
+    { ITSUT_PKI_TRIGGER_EVENT_AT,          "PKI Trigger Authorization request" },
+    { ITSUT_PKI_TRIGGER_EVENT_RESULT,      "PKI Trigger Result" },
     { 0, NULL}
 };
 
@@ -2103,6 +2127,39 @@ static int dissect_itsut_ssem_event_indication(tvbuff_t *tvb, proto_tree *header
   return offset;
 } // End of function dissect_itsut_ssem_event_indication
 
+/* Code to build tree for UtPkiTrigger command */
+static int dissect_itsut_pki_trigger_event_ec(tvbuff_t *tvb, proto_tree *header_tree, int offset)
+{
+  proto_tree *tree = NULL;
+  proto_item *ti = NULL;
+   
+  /* ITSUT command tree */
+  ti = proto_tree_add_item(header_tree, hf_pki_trigger_event_ec, tvb, offset, L_ITSUT_PKI_TRIGGER_EVENT_EC, FALSE);
+  tree = proto_item_add_subtree(ti, ett_itsut_command);
+
+  /* UtPkiTrigger */
+  proto_tree_add_item(tree, hf_command, tvb, offset, L_ITSUT_COMMAND, FALSE);
+  offset += L_ITSUT_COMMAND;
+
+  return offset;
+} // End of function dissect_itsut_pki_trigger_event_ec
+
+static int dissect_itsut_pki_trigger_event_at(tvbuff_t *tvb, proto_tree *header_tree, int offset)
+{
+  proto_tree *tree = NULL;
+  proto_item *ti = NULL;
+   
+  /* ITSUT command tree */
+  ti = proto_tree_add_item(header_tree, hf_pki_trigger_event_at, tvb, offset, L_ITSUT_PKI_TRIGGER_EVENT_AT, FALSE);
+  tree = proto_item_add_subtree(ti, ett_itsut_command);
+
+  /* UtPkiTrigger */
+  proto_tree_add_item(tree, hf_command, tvb, offset, L_ITSUT_COMMAND, FALSE);
+  offset += L_ITSUT_COMMAND;
+
+  return offset;
+} // End of function dissect_itsut_pki_trigger_event_at
+
 /*****************************************************************************
     Result messages
 *****************************************************************************/
@@ -2480,6 +2537,27 @@ static int dissect_itsut_srem_update_event_result(tvbuff_t *tvb, proto_tree *hea
   return offset;
 } // End of function dissect_itsut_srem_update_event_result
 
+/* Code to build tree for UtPkiTriggerResult  indication */
+static int dissect_itsut_pki_trigger_event_result(tvbuff_t *tvb, proto_tree *header_tree, int offset)
+{
+  proto_tree *tree = NULL;
+  proto_item *ti = NULL;
+
+  /* ITSUT command tree */
+  ti = proto_tree_add_item(header_tree, hf_pki_trigger_event_result, tvb, offset, L_PKI_TRIGGER_EVENT_RESULT, FALSE);
+  tree = proto_item_add_subtree(ti, ett_itsut_command);
+
+  /* UtPkiTriggerResult */
+  proto_tree_add_item(tree, hf_command, tvb, offset, L_ITSUT_COMMAND, FALSE);
+  offset += L_ITSUT_COMMAND;
+  
+  /* Result */
+  proto_tree_add_item(tree, hf_pki_trigger_event_result_code, tvb, offset, L_PKI_TRIGGER_EVENT_RESULT_CODE, FALSE);
+  offset += L_PKI_TRIGGER_EVENT_RESULT_CODE;
+
+  return offset;
+} // End of function dissect_itsut_pki_trigger_event_result
+
 /* Code to actually dissect the ITSUT packets */
 static int dissect_itsut_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
@@ -2681,6 +2759,15 @@ static int dissect_itsut_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
             break;
         case (guint8)ITSUT_SSEMEVENTINDICATION:
             offset = dissect_itsut_ssem_event_indication(tvb, itsut_tree, pinfo, offset);
+            break;
+        case (guint8)ITSUT_PKI_TRIGGER_EVENT_EC:
+            offset = dissect_itsut_pki_trigger_event_ec(tvb, itsut_tree, offset);
+            break;
+        case (guint8)ITSUT_PKI_TRIGGER_EVENT_AT:
+            offset = dissect_itsut_pki_trigger_event_at(tvb, itsut_tree, offset);
+            break;
+        case (guint8)ITSUT_PKI_TRIGGER_EVENT_RESULT:
+            offset = dissect_itsut_pki_trigger_event_result(tvb, itsut_tree, offset);
             break;
         default:
             return 0;
@@ -3367,6 +3454,19 @@ proto_register_itsut(void)
     },
     { &hf_ssem_event_indication_payload,
       {"Payload", "itsut.ssem_event_indication_payload", FT_BYTES, BASE_NONE, NULL, 0x00, NULL, HFILL}
+    },
+    
+    /* ITSUT PKI Trigger Event */
+    { &hf_pki_trigger_event_ec,
+      {"UtPkiTrigger EC", "itsut.pki.trigger.ec", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+    },
+    { &hf_pki_trigger_event_at,
+      {"UtPkiTrigger AT", "itsut.pki.trigger.at", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL}
+    },
+
+    /* ITSUT PKI/SSEM Trigger Result code */
+    { &hf_pki_trigger_event_result_code,
+      {"Code", "itsut.pki_result.result.code", FT_UINT8, BASE_HEX, VALS(itsut_result_names), 0x00, NULL, HFILL}
     },
     
   };
