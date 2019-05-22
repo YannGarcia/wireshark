@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <ctype.h>
+#include <inttypes.h>
 
 #include <epan/proto.h>
 #include <epan/packet.h>
@@ -979,9 +980,12 @@ static int tree_gn_cert_time64(tvbuff_t *tvb, proto_tree *ext_tree, int hf_gn_ty
   strftime(time_buf, 255, "%Y-%m-%d %H:%M:%S", time_tm);
   time_buf[255] = '\0';
 
-  proto_tree_add_uint64_format(ext_tree, hf_gn_type, tvb, offset, 8, time64_us,
-			       "Generation Time: %19s.%06d (%lu)",
-                               time_buf, time_us, time64_us);     
+  if (hf_gn_type == hf_gn_sh_field_gentime) 
+	  proto_tree_add_uint64_format(ext_tree, hf_gn_type, tvb, offset, 8, time64_us, "Generation Time: %19s.%06d (%" PRIu64 ")", time_buf, time_us, time64_us);
+  else if (hf_gn_type == hf_gn_sh_field_exptime)
+	  proto_tree_add_uint64_format(ext_tree, hf_gn_type, tvb, offset, 8, time64_us, "Expiration Time: %19s.%06d (%" PRIu64 ")", time_buf, time_us, time64_us);
+  else
+	  proto_tree_add_uint64_format(ext_tree, hf_gn_type, tvb, offset, 8, time64_us, "Time: %19s.%06d (%" PRIu64 ")", time_buf, time_us, time64_us);
 
   return 8;
 }
