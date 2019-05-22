@@ -75,6 +75,7 @@ rules.ninja
 epan/dissectors/asn1/*/*-stamp
 epan/dissectors/pidl/*-stamp
 epan/dissectors/dcerpc/*-stamp
+/build/
 
 # Doc #
 ########
@@ -184,3 +185,4 @@ vgcore.*
 Wireshark.*
 .pytest_cache/
 test/*.log
+*.orig
