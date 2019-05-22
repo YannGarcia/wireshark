@@ -4706,7 +4706,7 @@ proto_register_gn(void)
       {"Std Dev", "gn.sh.gentime.stddev", FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL}
     },
     { &hf_gn_sh_field_exptime,
-      {"Expiration Time", "gn.sh.exptime", FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL}
+      {"Expiration Time", "gn.sh.exptime", FT_UINT64, BASE_DEC, NULL, 0x00, NULL, HFILL}
     },
     { &hf_gn_sh_field_starttime,
       {"Start Time", "gn.sh.starttime", FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL}
