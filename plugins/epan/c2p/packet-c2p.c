@@ -173,6 +173,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
           c2p_ver_typ, "%s (%u)", str_ver_type, c2p_ver_typ);
   offset_step = 1;
 
+  /* Times */
   time32_s = tvb_get_ntohl(tvb, offset_step);
   offset_step += 4;
   time_sec = time32_s + L_U64_2004_IN_ABSTIME;
@@ -191,6 +192,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                              "%d", time32_msec_s);
 
   value32 = tvb_get_guint8(tvb, offset_step);
+  /* primary channel */
   if (value32 == 0) {
     proto_tree_add_uint_format_value(c2p_tree, hf_c2p_channel_pri, tvb, offset_step, 1, value32,
             "N/A (%d)", value32);
@@ -200,6 +202,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   offset_step += 1;
 
   if (c2p_ver_typ == C2P_VER_1_TX || c2p_ver_typ == C2P_VER_1_RX) {
+    /* secondary channel */
     value32 = tvb_get_guint8(tvb, offset_step);
     if (value32 == 0) {
         proto_tree_add_uint_format_value(c2p_tree, hf_c2p_channel_sec, tvb, offset_step, 1, value32,
@@ -208,7 +211,8 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         proto_tree_add_item(c2p_tree, hf_c2p_channel_sec, tvb, offset_step, 1, value32);
     }
     offset_step += 1;
-
+    
+    /* Used interface */
     value32 = tvb_get_guint8(tvb, offset_step);
     str_channel_used = val_to_str(value32, used_channel_names, "Unknown");
     if (value32 == 0) {
@@ -221,6 +225,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     offset_step += 1;
   }
 
+  /* data rate */
   value32 = tvb_get_guint8(tvb, offset_step);
   if (value32 == 0) {
     proto_tree_add_uint_format_value(c2p_tree, hf_c2p_data_rate, tvb, offset_step, 1, value32,
@@ -231,6 +236,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   }
   offset_step += 1;
 
+  /* antenna */
   value32 = tvb_get_guint8(tvb, offset_step);
   if (value32 == 0) {
     proto_tree_add_uint_format_value(c2p_tree, hf_c2p_antenna, tvb, offset_step, 1, value32,
@@ -240,6 +246,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   }
   offset_step += 1;
 
+  /* latitude */
   tmp_ll = (gint64)tvb_get_ntohl(tvb, offset_step);
   if (tmp_ll == 9000000001) {
     proto_tree_add_int_format_value(c2p_tree, hf_c2p_lat, tvb, offset_step, 4, (gint32)tmp_ll,
@@ -256,6 +263,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   }
   offset_step += 4;
 
+  /* longitude */
   tmp_ll = (gint64)tvb_get_ntohl(tvb, offset_step);
   if (tmp_ll == 180000000001) {
     proto_tree_add_int_format_value(c2p_tree, hf_c2p_lon, tvb, offset_step, 4, (gint32)tmp_ll,
@@ -272,6 +280,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   }
   offset_step += 4;
 
+  /* speed */
   tmp_sh = tvb_get_ntohs(tvb, offset_step);
   if (tmp_sh == 32766) {
     proto_tree_add_int_format_value(c2p_tree, hf_c2p_speed, tvb, offset_step, 2, tmp_sh,
@@ -285,6 +294,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   }
   offset_step += 2;
 
+  /* heading */
   tmp_sh = tvb_get_ntohs(tvb, offset_step);
   if (tmp_sh == 3601) {
     proto_tree_add_uint_format_value(c2p_tree, hf_c2p_heading, tvb, offset_step, 2, tmp_sh,
@@ -296,8 +306,9 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				  tmp_sh);
   }
   offset_step += 2;
- 
+  
   if (c2p_ver_typ == C2P_VER_0_RX || c2p_ver_typ == C2P_VER_1_RX) {
+    /* tx */
     value32_s = (gint8)tvb_get_guint8(tvb, offset_step);
     if (value32_s == 127) {
       proto_tree_add_int_format_value(c2p_tree, hf_c2p_rssi_1, tvb, offset_step, 1, value32_s,
@@ -307,7 +318,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             "%d dbm", value32_s);
     }
     offset_step += 1;
-
+    /* tssi ant 1 */
     value32_s = (gint8)tvb_get_guint8(tvb, offset_step);
     if (value32_s == 127) {
       proto_tree_add_int_format_value(c2p_tree, hf_c2p_rssi_2, tvb, offset_step, 1, value32_s,
@@ -318,6 +329,7 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     }
     offset_step += 1;
 
+    /* tssi ant 2 */
     value32_s = (gint8)tvb_get_guint8(tvb, offset_step);
     if (value32_s == 127) {
       proto_tree_add_int_format_value(c2p_tree, hf_c2p_noise_1, tvb, offset_step, 1, value32_s,
@@ -327,40 +339,6 @@ _dissect_c2p(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             "%d dbm", value32_s);
     }
     offset_step += 1;
-
-    value32_s = (gint8)tvb_get_guint8(tvb, offset_step);
-    if (value32_s == 127) {
-      proto_tree_add_int_format_value(c2p_tree, hf_c2p_noise_2, tvb, offset_step, 1, value32_s,
-            "N/A (%d)", value32_s);
-    } else {
-      proto_tree_add_int_format_value(c2p_tree, hf_c2p_noise_2, tvb, offset_step, 1, value32_s,
-            "%d dbm", value32_s);
-    }
-    offset_step += 1;
-
-    tmp_perc = tvb_get_ntohs(tvb, offset_step);
-    if (tmp_perc == 1001) {
-      proto_tree_add_uint_format_value(c2p_tree, hf_c2p_cbr_1, tvb, offset_step, 2, tmp_perc,
-              "N/A (%d)", tmp_perc);
-    } else {
-      proto_tree_add_uint_format_value(c2p_tree, hf_c2p_cbr_1, tvb, offset_step, 2, tmp_perc,
-				  "%.2f %% (%d)",
-				  tmp_perc / 10.0,
-				  tmp_perc);
-    }
-    offset_step += 2;
-
-    tmp_perc = tvb_get_ntohs(tvb, offset_step);
-    if (tmp_perc == 1001) {
-      proto_tree_add_uint_format_value(c2p_tree, hf_c2p_cbr_2, tvb, offset_step, 2, tmp_perc,
-              "N/A (%d)", tmp_perc);
-    } else {
-      proto_tree_add_uint_format_value(c2p_tree, hf_c2p_cbr_2, tvb, offset_step, 2, tmp_perc,
-				  "%.2f %% (%d)",
-				  tmp_perc / 10.0,
-				  tmp_perc);
-    }
-    offset_step += 2;
   } else if (c2p_ver_typ == C2P_VER_0_TX || c2p_ver_typ == C2P_VER_1_TX) {
     value32_s = (gint8)tvb_get_guint8(tvb, offset_step);
     if (value32_s == 127) {
